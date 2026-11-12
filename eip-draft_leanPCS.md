@@ -59,10 +59,13 @@ A PCS claim states that the multilinear polynomial $f$ over $K$ in `n` variables
 PCS_claim = version (1 byte) || n (1 byte) || commitment (56 bytes) || point_0 || ... || point_{n-1} (24 bytes each) || value (24 bytes)
 ```
 
-- **The commitment.** Under the hood, it's a Merkle root and an out of domain answer (in $E$).
+- **The polynomial.** $f(x) = \sum_i f_i \prod_j \ell_j(i, x)$, where $f_i \in K$ is the $i$-th of the $2^n$ committed values, and $\ell_j(i, x)$ is $x_j$ if bit $j$ of $i$ is 1 and $1 - x_j$ otherwise (bit 0 is the least significant).
+- **The commitment.** `commitment = root (32 bytes) || ood (24 bytes)`. `root` is the Merkle root of the PCS version's encoding of $f$. `ood` is the out-of-domain answer $f(z)$, where $z_j$ is the element encoded by the last 24 bytes of `keccak256("leanPCS-ood" || version || n || root || j)` (`version`, `n` and `j` are one byte each).
 - **Well-formedness.** A PCS claim is well-formed if `version` is supported, `1 <= n <= MAX_PCS_VARIABLES`, and it is `82 + 24 * n` bytes long.
 
-Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. We start at version `1`: ZK-WHIR at rate 1/2 with in the list-decoding regime.
+Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. It MUST return false if `PCS_claim` is not well-formed, and MUST check, in one opening, both $f(z)$ = `ood` and $f$(`point`) = `value`. The first check is what ties a commitment to one polynomial: in the list-decoding regime, a root alone fits a list of polynomials, and the answer at $z$, a point drawn from the root, singles one out.
+
+We start at version `1`: ZK-WHIR at rate 1/2 in the list-decoding regime. Version `1` is not fully specified here yet. For now, its parameters, transcript and proof encoding are those of the reference implementation (`crates/pcs_claim` in this repository, at commit `bb2da7f0`), which supports `15 <= n <= 28`, returns false for any other `n`, and is not zero knowledge yet.
 
 ### Dependencies
 
