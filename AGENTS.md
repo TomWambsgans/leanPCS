@@ -190,8 +190,8 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 ## Remaining
 
 - What the Lean port leaves, by line: [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md).
-- Membership: `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
-  simulation-extractability.
+- Membership: `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries
+  before the proof); simulation-extractability.
 - leanVM in Lean: the model gap (π2's circuit computes π1's Fiat–Shamir at the real Keccak-f[1600], π1's theorems are
   in the random-permutation model); the compiler's IV uniformity (`RecCompose.PatchChecked`) and `IvChecked` at other
   setup commitments; closed bounds at other shapes than the reference ([`formal/README.md`](formal/README.md),
