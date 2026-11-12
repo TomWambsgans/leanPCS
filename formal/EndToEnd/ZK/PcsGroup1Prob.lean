@@ -9,9 +9,10 @@ import ZK.PcsIdeal
 The good event's failure is a union of events each pinning one coordinate of `W`'s point to a value (or to one of
 `|K|` values) that the other coordinates and `t` fix (`prEvent_hit`, by resampling that coordinate: `iidE_set`), or
 `t` to the roots of a polynomial of degree `4` or `2` over `E` with a coefficient in `K` (`prEvent_inK_poly`):
-`w₂(t) ∈ K` (`4 |K|` values), `t² + θ t ∈ K` (`2 |K|`), and on `W`'s point `44` single values and `3 |K|`.
+`w₂(t) ∈ K` (`4 |K|` values), `t² + θ t ∈ K` (`2 |K|`), and on `W`'s point `42` single values and `3 |K|`.
 
-* **`group1Uniform`**: `Group1Uniform εgroup1`, `εgroup1 = (9 · 2^64 + 44) · 2^-192 ≤ 2^-124` (`εgroup1_le`).
+* **`group1Uniform`**: `Group1Uniform εgroup1`, `εgroup1 = (9 · 2^64 + 42) · 2^-192 ≤ 2^-124` (`εgroup1_le`);
+  `revealedUniform_closed`: `RevealedUniform (εgroup1 + εslack) 0`.
 * **`zeroKnowledge_of_pcs`**: zero knowledge of the membership proof over every PCS with `PcsZeroKnowledge` as the
   only hypothesis, within `εpcs Q + εgroup1 + εslack + εfs₀`; **`zeroKnowledge_ideal`**: over the model's ideal
   PCS, within `εgroup1 + εslack + εfs₀`, with no hypothesis.
@@ -335,6 +336,10 @@ theorem group1Uniform : Group1Uniform εgroup1 := by
       Group1At stmt ((membership logRows).cells (membershipInputs w)) c := fun c hc' hg ↦
     group1At_of_surj stmt _ hc c (zW_length_of_mem hc') (onto_of_good hg)
   exact (prEvent_mono_of_support _ _ _ fun c hc' hn hg ↦ hn (hG c hc' hg)).trans prEvent_notGood
+
+/-- **The revealed scalars are exactly uniform off `εgroup1 + εslack` of the challenges** (`≤ 2^-123`). -/
+theorem revealedUniform_closed : RevealedUniform (εgroup1 + εslack) 0 :=
+  revealedUniform_slack εgroup1 group1Uniform
 
 end PcsQuotient.EndToEnd.Group1
 

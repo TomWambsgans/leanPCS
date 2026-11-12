@@ -292,6 +292,6 @@ theorem valuesAt_cells (cir : Circuit) (hl : cir.logRows = 22) (cells₀ : Array
   have hsθ1 : QuotientSecurity.sq (t + 1 + θE) = QuotientSecurity.sq t + 1 := by rw [sq_add, hs1, sq_θE]
   rw [hs1, hsθ, hsθ1]
   refine ⟨by ring, by ring, ?_⟩
-  linear_combination (norm := char2_norm) (0 : E)
+  linear_combination (norm := char2_norm)
 
 end PcsQuotient.EndToEnd.Group1

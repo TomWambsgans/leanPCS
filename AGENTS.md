@@ -131,10 +131,11 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   knowledge soundness with no hypothesis (`Soundness.knowledgeSoundness`: about 2^-62.4 at 2^64 queries, 126.4 bits as
   Q/ε, the three PCS openings' WHIR soundness proved under mumbai's, the pole condition proved of the circuit),
   completeness under one evaluated check (`WiringCheck`, the wiring's coefficient `n − 2` nonzero; δ < 2^-163), zero
-  knowledge **of the protocol over any zero-knowledge PCS** (`zeroKnowledge_pcs_slack`, for every PCS `pcs` with
-  `PcsZeroKnowledge pcs sim εpcs`, the EIP's ZK-WHIR assumption; within `εpcs Q + ε1 + εslack + εfs₀`, `εslack ≤ 2^-126`
-  and `εfs₀ ≤ 2^-163` proved) under `Group1Uniform ε1` (stated, not proved: the random rows' map to `W`'s answer and
-  the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through the slack words), the
+  knowledge **of the protocol over any zero-knowledge PCS** with no other hypothesis (`zeroKnowledge_of_pcs`, for every
+  PCS `pcs` with `PcsZeroKnowledge pcs sim εpcs`, the EIP's ZK-WHIR assumption; within
+  `εpcs Q + εgroup1 + εslack + εfs₀`, `εgroup1 ≤ 2^-124`, `εslack ≤ 2^-126` and `εfs₀ ≤ 2^-163` proved: the revealed
+  scalars are uniform off `εgroup1 + εslack` of the challenges, `Group1.group1Uniform` (the random rows' map to `W`'s
+  answer and the row values onto `E⁴`) and the slack words for `T`'s answer), the
   PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`; that
   PCS is hiding but not binding, so this shows the hypothesis consistent and the theorem with content; that a sound
   ZK-WHIR satisfies it is not proved); the deployed openings (plain WHIR) are not zero knowledge and not an instance;
@@ -189,8 +190,7 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 ## Remaining
 
 - What the Lean port leaves, by line: [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md).
-- Membership: `Group1Uniform` proved (the random rows' rank 12 off a determinant's zero set); `WiringCheck` by a
-  kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
+- Membership: `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
   simulation-extractability.
 - leanVM in Lean: the model gap (π2's circuit computes π1's Fiat–Shamir at the real Keccak-f[1600], π1's theorems are
   in the random-permutation model); the compiler's IV uniformity (`RecCompose.PatchChecked`) and `IvChecked` at other

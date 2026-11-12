@@ -11,12 +11,11 @@ intermediate protocols of `866ba889` were never ported.
 
 Ported (`lean/membership`). What remains:
 
-- **`Group1Uniform ε1`** (zero knowledge's hypothesis besides the PCS's; `T`'s part is proved through the slack
-  words, `εslack ≤ 2^-126`): the random rows' `K`-linear map to `W`'s answer and `X`, `C`, `V + Y` of rank 12 but on a
-  small set of challenges ([`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge").
 - **The PCS's zero knowledge.** Zero knowledge is proved for the protocol over any PCS `pcs` with
-  `PcsZeroKnowledge pcs sim εpcs` (stated in the protocol's experiment: the protocol over `pcs` against its hybrid over
-  the ideal PCS), satisfiable (the model's ideal PCS, `εpcs = 0`; hiding but not binding, so it shows the hypothesis
+  `PcsZeroKnowledge pcs sim εpcs` its only hypothesis (`zeroKnowledge_of_pcs`; the revealed scalars' uniformity,
+  `Group1Uniform` included, is proved: [`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge"). That
+  hypothesis is stated in the protocol's experiment (the protocol over `pcs` against its hybrid over the ideal PCS) and
+  is satisfiable (the model's ideal PCS, `εpcs = 0`; hiding but not binding, so it shows the hypothesis
   consistent, not that a sound PCS meets it). Not done: a stand-alone PCS zero-knowledge game
   implying it, and a ZK-WHIR PCS proved to meet it; the deployed openings (plain WHIR) do not.
 - **`WiringCheck`** (completeness's evaluated hypothesis: the wiring's coefficient `n − 2` nonzero) by a kernel proof.

@@ -50,7 +50,7 @@ def InK (x : E) : Prop := ∃ a : K, x = ofK a
 
 /-- **`E` is three-dimensional over `K`.** -/
 theorem finrank_KE : Module.finrank K E = 3 := by
-  haveI : Module.Finite K E := Module.Finite.of_finite
+  have : Module.Finite K E := Module.Finite.of_finite
   have h := Module.card_eq_pow_finrank (K := K) (V := E)
   rw [card_E, BF64.card_bf64, ← pow_mul] at h
   have := Nat.pow_right_injective (le_refl 2) h
@@ -59,7 +59,7 @@ theorem finrank_KE : Module.finrank K E = 3 := by
 /-- **A root in `E` of a monic quadratic over `K` lies in `K`**: its minimal polynomial has degree at most `2`
 and divides `[E : K] = 3`. -/
 theorem mem_K_of_quad (γ : E) (p q : K) (h : γ * γ + ofK p * γ + ofK q = 0) : InK γ := by
-  haveI : Module.Finite K E := Module.Finite.of_finite
+  have : Module.Finite K E := Module.Finite.of_finite
   have hint : IsIntegral K γ := .of_finite K γ
   have hdvd := minpoly.degree_dvd hint
   rw [finrank_KE] at hdvd
