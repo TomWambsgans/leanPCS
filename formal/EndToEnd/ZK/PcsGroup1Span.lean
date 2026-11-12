@@ -230,4 +230,70 @@ theorem SW_pass {t : E} (ht : ¬ InK t) {k : ℕ} (hk : k < 16) (h : RandomShape
     show (2 : ℕ) ^^^ 2 = 0 by decide, show (1 : ℕ) ^^^ 2 = 3 by decide, show (3 : ℕ) ^^^ 2 = 1 by decide, S4]
   ring
 
+/-! ### The closed forms -/
+
+theorem θE_sq' : θE * θE + θE = 1 := by linear_combination θE_sq - two_E
+
+/-- `1/x + 1/(x + 1) = 1/(x² + x)`. -/
+theorem inv_pair {x : E} (h0 : x ≠ 0) (h1 : x + 1 ≠ 0) : x⁻¹ + (x + 1)⁻¹ = (x * x + x)⁻¹ := by
+  rw [inv_add_inv h0 h1, show x + (x + 1) = 1 by linear_combination x * two_E, one_div]
+  ring_nf
+
+/-- `1/a + 1/(a + θ) = θ/(a² + θ a)`. -/
+theorem inv_pairθ {a : E} (h0 : a ≠ 0) (h1 : a + θE ≠ 0) : a⁻¹ + (a + θE)⁻¹ = θE * (a * a + θE * a)⁻¹ := by
+  rw [inv_add_inv h0 h1, show a + (a + θE) = θE by linear_combination a * two_E, div_eq_mul_inv]
+  ring_nf
+
+theorem shift_ne_zero {t : E} (ht : ¬ InK t) (R m : ℕ) : t + pt (4 * R) + pt m ≠ 0 := by
+  rw [add_assoc, pt, pt, ← ofK_add]; exact add_ofK_ne_zero ht _
+
+theorem InK_sq2 {t : E} (h : InK t) : InK (sq^[2] t) := by
+  obtain ⟨a, rfl⟩ := h
+  exact ⟨S^[2] a, (E2ECompleteness.Pcs.H.ofK_S_iterate 2 a).symm⟩
+
+/-- **`Σ φ = w₂₄(t) / (w₂(t) + B(R))`.** -/
+theorem S4_eq {t : E} (ht : ¬ InK t) {R : ℕ} (hR : R < 2 ^ 22) :
+    S4 t R = μt t * (sq^[2] t + ofK (point R))⁻¹ := by
+  set s := t + pt (4 * R) with hs
+  have n0 : s ≠ 0 := by have := shift_ne_zero ht R 0; rwa [pt_zero, add_zero] at this
+  have n1 : s + 1 ≠ 0 := by have := shift_ne_zero ht R 1; rwa [pt_one] at this
+  have n2 : s + θE ≠ 0 := by have := shift_ne_zero ht R 2; rwa [pt_two] at this
+  have n3 : s + θE + 1 ≠ 0 := by
+    have := shift_ne_zero ht R 3; rwa [pt_three, ← hs, show s + (1 + θE) = s + θE + 1 by ring] at this
+  have hsq : (s + θE) * (s + θE) + (s + θE) = (s * s + s) + 1 := by linear_combination θE_sq' + s * θE * two_E
+  have m0 : s * s + s ≠ 0 := by
+    rw [show s * s + s = s * (s + 1) by ring]; exact mul_ne_zero n0 n1
+  have m1 : s * s + s + 1 ≠ 0 := by
+    rw [← hsq, show (s + θE) * (s + θE) + (s + θE) = (s + θE) * (s + θE + 1) by ring]; exact mul_ne_zero n2 n3
+  have h2 : sq^[2] t + ofK (point R) = (s * s + s) * (s * s + s) + (s * s + s) := by
+    have e := sq_iterate_add 2 t (pt (4 * R))
+    rw [sq_iterate_pt (by omega) (by norm_num), show 4 * R / 2 ^ 2 = R by omega] at e
+    rw [show ofK (point R) = pt R from rfl, ← e, hs]
+    rfl
+  unfold S4 φ
+  rw [← hs, pt_zero, pt_one, pt_two, pt_three, add_zero, show s + (1 + θE) = s + θE + 1 by ring, h2,
+    ← inv_pair m0 m1, ← hsq, ← inv_pair n0 n1, ← inv_pair n2 n3]
+  simp only [div_eq_mul_inv]
+  ring
+
+/-- `δ_R = (B(4R) + 1)² + θ (B(4R) + 1)`, in `K`. -/
+def δK (R : ℕ) : K := (point (4 * R) + 1) * (point (4 * R) + 1) + betaAt 1 * (point (4 * R) + 1)
+
+/-- **`φ₁ + φ₃ = w₂₄(t) θ / (t² + θ t + δ_R)`.** -/
+theorem A_eq {t : E} (ht : ¬ InK t) (R : ℕ) :
+    φ t R 1 + φ t R 3 = (μt t * θE) * (t * t + θE * t + ofK (δK R))⁻¹ := by
+  set a := t + pt (4 * R) + 1 with ha
+  have n1 : a ≠ 0 := by have := shift_ne_zero ht R 1; rwa [pt_one] at this
+  have n3 : a + θE ≠ 0 := by
+    have := shift_ne_zero ht R 3; rwa [pt_three, show t + pt (4 * R) + (1 + θE) = a + θE by rw [ha]; ring] at this
+  have hd : a * a + θE * a = t * t + θE * t + ofK (δK R) := by
+    simp only [ha, δK, ofK_add, ofK_mul, ofK_one]
+    rw [show ofK (betaAt 1) = θE from rfl, show ofK (point (4 * R)) = pt (4 * R) from rfl]
+    linear_combination (t * (pt (4 * R) + 1)) * two_E
+  unfold φ
+  rw [pt_one, pt_three, ← ha, show t + pt (4 * R) + (1 + θE) = a + θE by rw [ha]; ring, ← hd]
+  simp only [div_eq_mul_inv]
+  rw [← mul_add, inv_pairθ n1 n3]
+  ring
+
 end PcsQuotient.EndToEnd.Group1
