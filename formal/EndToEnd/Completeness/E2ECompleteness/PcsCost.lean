@@ -15,7 +15,7 @@ import LeanVM.Protocol.Rpm.Cost
 import LeanVM.Protocol.Verifier.Cost
 
 /-!
-# The block count of the staged run (the PCS claims)
+# The block count of the staged run
 
 **`hcost_deployed`**: the deployed staged run (`stagedRun`, `PcsStaging.lean`) makes at most `2^48`
 block calls (`hashBlocks`: a Keccak-256 of `n` bytes costs `⌊n / 136⌋ + 1`, a Keccak-f[1600] one).
@@ -25,7 +25,7 @@ The cost is weighted, as in the previous protocol's `Cost.lean`:
 * **Every hash is short.** The tables' Merkle leaves are `64` words (`512` bytes, `4` blocks),
   WHIR's at most `192` words (`1536` bytes, `12` blocks: `WordsLE` for the honest script
   `pcsOpeningScript`, from `ladder_folds`; `WidthsLE` for the verifier's program), the nodes `64`
-  bytes, the out-of-domain inputs `46` bytes, the chain's inputs at most `320` bytes, the label
+  bytes, the out-of-domain inputs `46` bytes, the chain's inputs at most `160` bytes, the label
   `136` bytes, the openings' IVs (`pcsClaimBytes`) `82 + 24 · n` bytes for points of `n ≤ 28`
   coordinates (`claimsAt_len`; the verifier checks `n ≤ maxVars`).
 * **The prover's runner** (`cost_runFromWithHash`): a program of cost `n` quarters
@@ -33,14 +33,13 @@ The cost is weighted, as in the previous protocol's `Cost.lean`:
   (`blockFactor`).
 * **The verifier's run** (`cost_runWithHash`): at most `3 · n` blocks.
 * **The stages** (`cost_stagedRunG`, generic in the setup, circuit and cells): the setup's
-  commitment, the index, `W`, `H`, `Q`, `G` commitments (a tree of `5 · 2^(μ - 5)` blocks and `μ`
-  out-of-domain hashes each, `comCost`), the chain's six hashes, the prover's reduction twice and the
-  verifier's (`10` blocks each), the six openings proved (`pOpen`) and verified (`vOpen`).
+  commitment, the index, `W` and `T` commitments (a tree of `5 · 2^(μ - 5)` blocks and `μ`
+  out-of-domain hashes each, `comCost`), the chain's six hashes, the prover's reduction and the
+  verifier's (`8` blocks each), the three openings proved (`pOpen`) and verified (`vOpen`).
   Instantiated at the deployed sizes (`cellVars 22 = 24`, `fuel = 2^25`); nothing of the deployed
   circuit is evaluated.
 
-The total is `228 197 329 439 321 < 2^48` blocks, nearly all of it the six WHIR provers'
-`6 · 40481 · (14 · 2^26 + 2)`.
+The total is below `2^48` blocks, nearly all of it the three WHIR provers'.
 -/
 
 open OracleComp OracleSpec
@@ -689,42 +688,39 @@ theorem cost_proveClaimWithH (fuel : ℕ) (tree : Tree) (table : Array K) (c : C
 theorem length_label (index : Commitment) (stmt : Statement) : (label index stmt).length = 136 := by
   simp only [label, List.length_append, length_digestBytes, length_elementBytes,
     Vector.length_toList]
-  have h16 : "pcs-quotient-kc1".toUTF8.toList.length = 16 := by decide +kernel
+  have h16 : protocolName.length = 16 := by unfold protocolName; decide +kernel
   omega
 
-/-- The six claims' points have at most `v` coordinates. -/
+/-- The three claims' points have at most `v` coordinates. -/
 def ClaimsLen (v : ℕ) (cl : Claims) : Prop :=
-  cl.witness.point.length ≤ v ∧ cl.wiring.point.length ≤ v ∧ cl.h.point.length ≤ v ∧
-    cl.q.point.length ≤ v ∧ cl.g.point.length ≤ v ∧ cl.sum.point.length ≤ v
+  cl.witness.point.length ≤ v ∧ cl.wiring.point.length ≤ v ∧ cl.copy.point.length ≤ v
 
 /-- What the reduction may return: claims whose points have at most `m + 4` coordinates. -/
 def RedOK (logRows : ℕ) (o : Option Reduced) : Prop :=
   ∀ r, o = some r → ClaimsLen (cellVars logRows + 4) r.claims
 
-/-- **The claims' points**: `W`'s at most `m + 1` coordinates, the wiring's `m`, `H`'s `m + 3`, `Q`'s
-`m + 4`, `G`'s `m + 1`, the sum's `m + 3`. -/
-theorem claimsAt_len {logRows : ℕ} {stmt : Statement} {α β γ t ρ : E} {a : Vector E 4}
-    {next qv gv : E} {cl : Claims} (h : claimsAt logRows stmt α β γ t ρ a next qv gv = some cl) :
+/-- **The claims' points**: `W`'s and the wiring's `m` coordinates, `T`'s `m + 4`. -/
+theorem claimsAt_len {logRows : ℕ} {stmt : Statement} {α β μ t ρ : E} {v : Vector E 3} {next : E}
+    {cl : Claims} (h : claimsAt logRows stmt α β μ t ρ v next = some cl) :
     ClaimsLen (cellVars logRows + 4) cl := by
   unfold claimsAt at h
-  extract_lets m w wAt theta cell x y c v gate b gamma2 gammas outside publicWeight target tau
-    rows d dNext product copies denominators at h
-  by_cases hd : (denominators.any fun x ↦ decide (x = 0)) = true
-  · simp [hd] at h
-  simp only [hd, Bool.false_eq_true, ↓reduceIte, quotientParts, Option.some.injEq] at h
-  subst h
-  change ClaimsLen (m + 4) _
-  simp [ClaimsLen, sumPoint, m]
-  omega
+  simp only at h
+  split at h
+  · cases h
+  · simp only [Option.some.injEq] at h
+    subst h
+    simp only [ClaimsLen, copyPoint, List.length_append, List.length_cons, List.length_nil,
+      List.length_take, List.length_drop, List.length_map, List.length_range]
+    omega
 
 theorem redOK_none (logRows : ℕ) : RedOK logRows none := fun _ h ↦ by cases h
 
-theorem redOK_map {logRows : ℕ} {stmt : Statement} {α β γ t ρ : E} {a : Vector E 4}
-    {next qv gv : E} (cs : Commitments) :
-    RedOK logRows ((claimsAt logRows stmt α β γ t ρ a next qv gv).map
+theorem redOK_map {logRows : ℕ} {stmt : Statement} {α β μ t ρ : E} {v : Vector E 3} {next : E}
+    (cs : Commitments) :
+    RedOK logRows ((claimsAt logRows stmt α β μ t ρ v next).map
       fun claims ↦ (⟨cs, claims⟩ : Reduced)) := by
   intro r hr
-  rcases hc : claimsAt logRows stmt α β γ t ρ a next qv gv with _ | cl
+  rcases hc : claimsAt logRows stmt α β μ t ρ v next with _ | cl
   · rw [hc] at hr
     cases hr
   · rw [hc] at hr
@@ -749,48 +745,40 @@ theorem length_squeezeIn (c : Chain) :
   rw [List.length_append, length_digestBytes, length_flatMap_scalarBytes]
 
 /-- **The reduction's transcript**, then a continuation charged only at what the reduction may
-return: the label (`136` bytes, two blocks), `α` after three scalars (`128` bytes), `β`, `γ`, `t`
-after nine scalars (`320` bytes, three blocks), `ρ` after five values (`192` bytes, two blocks). -/
+return: the label (`136` bytes, two blocks), `α` after three scalars (`128` bytes), `β`, `μ`, `t` after
+three scalars (`128` bytes), `ρ` after four values (`160` bytes, two blocks). -/
 theorem qc_reduceWithH_bind {β : Type} (logRows : ℕ) (index : Commitment) (stmt : Statement)
     (p : ReductionProof) (f : Option Reduced → OracleComp KeccakCalls β) (b : ℕ)
     (hf : ∀ o, RedOK logRows o → QC (f o) b) :
-    QC (reduceWithH callKeccak256 logRows index stmt p >>= f) (10 + b) := by
+    QC (reduceWithH callKeccak256 logRows index stmt p >>= f) (8 + b) := by
   by_cases hs : Supported logRows
   · simp only [reduceWithH, hs, not_true_eq_false, ↓reduceIte, startWithH, squeezeWithH,
       bind_assoc, pure_bind]
-    refine (qc_H_le (k := 2) ?_).bind_le (b := 8 + b) (fun s₀ ↦ ?_) (by omega)
+    refine (qc_H_le (k := 2) ?_).bind_le (b := 6 + b) (fun s₀ ↦ ?_) (by omega)
     · rw [length_label]; omega
     split
     next w c₁ hc₁ =>
       have e₁ := (readCommitment_pending hc₁).2
       simp only [bind_assoc]
-      refine (qc_H_le (k := 1) ?_).bind_le (b := 7 + b) (fun s₁ ↦ ?_) (by omega)
+      refine (qc_H_le (k := 1) ?_).bind_le (b := 5 + b) (fun s₁ ↦ ?_) (by omega)
       · rw [length_squeezeIn, e₁]; simp
-      refine (qc_H_le (k := 1) ?_).bind_le (b := 6 + b) (fun s₂ ↦ ?_) (by omega)
+      refine (qc_H_le (k := 1) ?_).bind_le (b := 4 + b) (fun s₂ ↦ ?_) (by omega)
       · simp [length_digestBytes]
-      refine (qc_H_le (k := 1) ?_).bind_le (b := 5 + b) (fun s₃ ↦ ?_) (by omega)
+      refine (qc_H_le (k := 1) ?_).bind_le (b := 3 + b) (fun s₃ ↦ ?_) (by omega)
       · simp [length_digestBytes]
       split
       next h c₂ hc₂ =>
-        split
-        next q c₃ hc₃ =>
-          split
-          next g c₄ hc₄ =>
-            have e₂ := (readCommitment_pending hc₂).2
-            have e₃ := (readCommitment_pending hc₃).2
-            have e₄ := (readCommitment_pending hc₄).2
-            simp only [bind_assoc]
-            refine (qc_H_le (k := 3) ?_).bind_le (b := 2 + b) (fun s₄ ↦ ?_) (by omega)
-            · rw [length_squeezeIn, e₄, e₃, e₂]; simp
-            refine (qc_H_le (k := 2) ?_).bind_le (b := b) (fun s₅ ↦ ?_) (by omega)
-            · rw [length_squeezeIn]
-              simp only [Chain.absorb, foldl_absorb, List.length_append, List.nil_append,
-                Vector.length_toList, List.length_cons, List.length_nil]
-              omega
-            rw [pure_bind]
-            exact hf _ (redOK_map _)
-          next => rw [pure_bind]; exact (hf none (redOK_none _)).mono (by omega)
-        next => rw [pure_bind]; exact (hf none (redOK_none _)).mono (by omega)
+        have e₂ := (readCommitment_pending hc₂).2
+        simp only [bind_assoc]
+        refine (qc_H_le (k := 1) ?_).bind_le (b := 2 + b) (fun s₄ ↦ ?_) (by omega)
+        · rw [length_squeezeIn, e₂]; simp
+        refine (qc_H_le (k := 2) ?_).bind_le (b := b) (fun s₅ ↦ ?_) (by omega)
+        · rw [length_squeezeIn]
+          simp only [Chain.absorb, foldl_absorb, List.length_append, List.nil_append,
+            Vector.length_toList, List.length_cons, List.length_nil]
+          omega
+        rw [pure_bind]
+        exact hf _ (redOK_map _)
       next => rw [pure_bind]; exact (hf none (redOK_none _)).mono (by omega)
     next => rw [pure_bind]; exact (hf none (redOK_none _)).mono (by omega)
   · simp only [reduceWithH, hs, not_false_eq_true, ↓reduceIte, pure_bind]
@@ -806,55 +794,39 @@ theorem cost_proveClaimWithH28 (fuel : ℕ) (tree : Tree) (table : Array K) (c :
     QC (proveClaimWithH callKeccak256 callKeccakF1600 fuel tree table c claim) (pOpen fuel) :=
   cost_proveClaimWithH fuel tree table c claim 28 6 hv (by norm_num)
 
-/-- **The prover's last stretch**: its second reduction, then the six openings, their points of at
-most `cellVars logRows + 4 ≤ 28` coordinates. -/
+/-- **The prover's last stretch**: the three openings, their points of at most `cellVars logRows + 4 ≤ 28`
+coordinates. -/
 theorem cost_proverTailG (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (cells₀ : Array K)
     (coins : Coins) (fuel : ℕ) (stmt : Statement) (a : AuxA) (b : AuxB) (c : AuxC)
     (s₁ s₂ s₃ s₄ s₅ : Digest) :
-    QC (proverTailG circuit cells₀ coins fuel stmt a b c s₁ s₂ s₃ s₄ s₅) (10 + 6 * pOpen fuel) := by
+    QC (proverTailG circuit cells₀ coins fuel stmt a b c s₁ s₂ s₃ s₄ s₅) (3 * pOpen fuel) := by
   unfold proverTailG
+  have ho : RedOK circuit.logRows (claimsOf circuit cells₀ coins stmt a b c s₄ s₅) := redOK_map _
+  generalize claimsOf circuit cells₀ coins stmt a b c s₄ s₅ = o at ho
+  rcases o with _ | r
+  · exact qc_pure _ _
+  obtain ⟨h1, h2, h3⟩ := ho r rfl
+  have hv : cellVars circuit.logRows + 4 ≤ 28 := by omega
+  unfold openTailH realPcsH
+  dsimp only
+  refine (cost_proveClaimWithH28 _ _ _ _ _ (h1.trans hv)).bind_le (b := 2 * pOpen fuel)
+    (fun o₁ ↦ ?_) (by omega)
   split
-  next r₀ _ =>
-    refine qc_reduceWithH_bind _ _ _ _ _ _ fun o ho ↦ ?_
+  next =>
+    refine (cost_proveClaimWithH28 _ _ _ _ _ (h2.trans hv)).bind_le (b := pOpen fuel)
+      (fun o₂ ↦ ?_) (by omega)
     split
-    next r =>
-      obtain ⟨h1, h2, h3, h4, h5, h6⟩ := ho r rfl
-      have hv : cellVars circuit.logRows + 4 ≤ 28 := by omega
-      refine (cost_proveClaimWithH28 _ _ _ _ _ (h1.trans hv)).bind_le (b := 5 * pOpen fuel)
-        (fun o₁ ↦ ?_) (by omega)
-      split
-      next =>
-        refine (cost_proveClaimWithH28 _ _ _ _ _ (h2.trans hv)).bind_le (b := 4 * pOpen fuel)
-          (fun o₂ ↦ ?_) (by omega)
-        split
-        next =>
-          refine (cost_proveClaimWithH28 _ _ _ _ _ (h3.trans hv)).bind_le (b := 3 * pOpen fuel)
-            (fun o₃ ↦ ?_) (by omega)
-          split
-          next =>
-            refine (cost_proveClaimWithH28 _ _ _ _ _ (h4.trans hv)).bind_le (b := 2 * pOpen fuel)
-              (fun o₄ ↦ ?_) (by omega)
-            split
-            next =>
-              refine (cost_proveClaimWithH28 _ _ _ _ _ (h5.trans hv)).bind_le (b := pOpen fuel)
-                (fun o₅ ↦ ?_) (by omega)
-              split
-              next =>
-                refine (cost_proveClaimWithH28 _ _ _ _ _ (h6.trans hv)).bind_le (b := 0)
-                  (fun o₆ ↦ ?_) (by omega)
-                split <;> exact qc_pure _ _
-              next => exact qc_pure _ _
-            next => exact qc_pure _ _
-          next => exact qc_pure _ _
-        next => exact qc_pure _ _
-      next => exact qc_pure _ _
+    next =>
+      refine (cost_proveClaimWithH28 _ _ _ _ _ (h3.trans hv)).bind_le (b := 0)
+        (fun o₃ ↦ ?_) (by omega)
+      split <;> exact qc_pure _ _
     next => exact qc_pure _ _
   next => exact qc_pure _ _
 
-/-- **The verifier**: the reduction, then the six openings. -/
+/-- **The verifier**: the reduction, then the three openings. -/
 theorem cost_verifyWithH (logRows : ℕ) (index : Commitment) (stmt : Statement)
     (proof : PcsQuotient.Proof) :
-    QC (verifyWithH callKeccak256 callKeccakF1600 logRows index stmt proof) (10 + 6 * vOpen) := by
+    QC (verifyWithH callKeccak256 callKeccakF1600 logRows index stmt proof) (8 + 3 * vOpen) := by
   unfold verifyWithH
   refine qc_reduceWithH_bind _ _ _ _ _ _ fun o _ ↦ ?_
   split
@@ -867,82 +839,77 @@ theorem cost_verifyWithH (logRows : ℕ) (index : Commitment) (stmt : Statement)
 theorem cost_stageAG (setup : OracleComp KeccakCalls (Tree × Commitment)) (Cs : ℕ)
     (hs : QC setup Cs) (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (stmt : Statement) :
     QC (stageAG setup circuit cells₀ coins stmt)
-      (Cs + (comCost (cellVars circuit.logRows) + (comCost (cellVars circuit.logRows + 1) +
+      (Cs + (comCost (cellVars circuit.logRows) + (comCost (cellVars circuit.logRows) +
         (2 + 0)))) := by
   unfold stageAG
   exact (hs.map _).bind fun _ ↦ (qc_commitmentWithH _ _).bind fun _ ↦
     (qc_commitmentWithH _ _).bind fun _ ↦
       (qc_H_le (k := 2) (by rw [length_label]; omega)).bind fun _ ↦ qc_pure _ 0
 
-/-- **Stage B**: the three parts' commitments. -/
-theorem cost_stageBG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (a : AuxA)
+/-- **Stage B**: the quotient table's commitment. -/
+theorem cost_stageBG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (stmt : Statement) (a : AuxA)
     (s₁ s₂ s₃ : Digest) :
-    QC (stageBG circuit cells₀ coins a s₁ s₂ s₃)
-      (comCost (cellVars circuit.logRows + 3) + (comCost (cellVars circuit.logRows + 4) +
-        (comCost (cellVars circuit.logRows + 1) + 0))) := by
+    QC (stageBG circuit cells₀ coins stmt a s₁ s₂ s₃) (comCost (cellVars circuit.logRows + 4) + 0) := by
   unfold stageBG
-  exact (qc_commitmentWithH _ _).bind fun _ ↦ (qc_commitmentWithH _ _).bind fun _ ↦
-    (qc_commitmentWithH _ _).bind fun _ ↦ qc_pure _ 0
+  exact (qc_commitmentWithH _ _).bind fun _ ↦ qc_pure _ 0
 
-/-- **Stage C**: the prover's reduction up to `ρ`'s query: the label (`2` blocks), `α`'s, `β`'s,
-`γ`'s (one each) and `t`'s (`3`) queries. -/
+/-- **Stage C**: the prover's reduction up to `ρ`'s query: the label (`2` blocks), `α`'s, `β`'s, `μ`'s and
+`t`'s queries (one each). -/
 theorem cost_stageCG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (stmt : Statement)
     (a : AuxA) (b : AuxB) (s₁ s₂ s₃ s₄ : Digest) :
-    QC (stageCG circuit cells₀ coins stmt a b s₁ s₂ s₃ s₄) (2 + (1 + (1 + (1 + (3 + 0))))) := by
+    QC (stageCG circuit cells₀ coins stmt a b s₁ s₂ s₃ s₄) (2 + (1 + (1 + (1 + (1 + 0))))) := by
   unfold stageCG
   exact (qc_H_le (k := 2) (by rw [length_label]; omega)).bind fun _ ↦
     (qc_H_le (k := 1) (by rw [length_in3]; omega)).bind fun _ ↦
     (qc_H_le (k := 1) (by rw [length_digestBytes]; omega)).bind fun _ ↦
     (qc_H_le (k := 1) (by rw [length_digestBytes]; omega)).bind fun _ ↦
-    (qc_H_le (k := 3) (by rw [length_in9]; omega)).bind fun _ ↦ qc_pure _ 0
+    (qc_H_le (k := 1) (by rw [length_in3]; omega)).bind fun _ ↦ qc_pure _ 0
 
 /-- **Stage D**: the prover's tail, then the verifier. -/
 theorem cost_stageDG (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (cells₀ : Array K)
     (coins : Coins) (fuel vLogRows : ℕ) (stmt : Statement) (a : AuxA) (b : AuxB) (c : AuxC)
     (s₁ s₂ s₃ s₄ s₅ : Digest) :
     QC (stageDG circuit cells₀ coins fuel vLogRows stmt a b c s₁ s₂ s₃ s₄ s₅)
-      (10 + 6 * pOpen fuel + (10 + 6 * vOpen)) := by
+      (3 * pOpen fuel + (8 + 3 * vOpen)) := by
   unfold stageDG
   refine (cost_proverTailG circuit hr cells₀ coins fuel stmt a b c s₁ s₂ s₃ s₄ s₅).bind fun o ↦ ?_
   split
   · exact qc_pure _ _
   · exact cost_verifyWithH _ _ _ _
 
-/-- **The chain's shape**: the stages and the chain's six hashes (`128`, `32`, `32`, `320` and `192`
+/-- **The chain's shape**: the stages and the chain's six hashes (`128`, `32`, `32`, `128` and `160`
 bytes). -/
 theorem cost_staged4 {α β γ δ : Type} (chal : Digest → E)
     (A : OracleComp KeccakCalls (α × Digest × CommitmentScalars))
-    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × Scalars9))
+    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × CommitmentScalars))
     (C : α → β → Digest → Digest → Digest → Digest →
-      OracleComp KeccakCalls (γ × Digest × (Vector E 4 × E)))
+      OracleComp KeccakCalls (γ × Digest × (Vector E 3 × E)))
     (D : α → β → γ → Digest → Digest → Digest → Digest → Digest → OracleComp KeccakCalls δ)
     (a b c d : ℕ) (hA : QC A a) (hB : ∀ x s₁ s₂ s₃, QC (B x s₁ s₂ s₃) b)
     (hC : ∀ x y s₁ s₂ s₃ s₄, QC (C x y s₁ s₂ s₃ s₄) c)
     (hD : ∀ x y z s₁ s₂ s₃ s₄ s₅, QC (D x y z s₁ s₂ s₃ s₄ s₅) d) :
     QC (staged4 chal A B C D)
-      (a + (1 + (1 + (1 + (b + (3 + (c + (2 + (d + 0))))))))) := by
+      (a + (1 + (1 + (1 + (b + (1 + (c + (2 + (d + 0))))))))) := by
   unfold staged4
   have h32 (s : Digest) : QC (callKeccak256 (digestBytes s)) 1 :=
     qc_H_le (by rw [length_digestBytes]; omega)
   exact hA.bind fun x ↦ (qc_H_le (k := 1) (by rw [length_in3]; omega)).bind fun s₁ ↦
     (h32 _).bind fun s₂ ↦ (h32 _).bind fun s₃ ↦ (hB _ _ _ _).bind fun y ↦
-    (qc_H_le (k := 3) (by rw [length_in9]; omega)).bind fun s₄ ↦ (hC _ _ _ _ _ _).bind fun z ↦
-    (qc_H_le (k := 2) (by rw [length_in5]; omega)).bind fun s₅ ↦
+    (qc_H_le (k := 1) (by rw [length_in3]; omega)).bind fun s₄ ↦ (hC _ _ _ _ _ _).bind fun z ↦
+    (qc_H_le (k := 2) (by rw [length_in4]; omega)).bind fun s₅ ↦
     (hD _ _ _ _ _ _ _ _).bind fun _ ↦ qc_pure _ 0
 
-/-- **The staged run, for any setup, circuit and cells**: the setup's cost, the index, `W`, `H`, `Q`,
-`G` commitments, the chain's hashes, the prover's reduction twice, its six openings, and the
-verifier. -/
+/-- **The staged run, for any setup, circuit and cells**: the setup's cost, the index, `W` and `T`
+commitments, the chain's hashes, the prover's reduction, its three openings, and the verifier. -/
 theorem cost_stagedRunG (setup : OracleComp KeccakCalls (Tree × Commitment)) (Cs : ℕ)
     (hs : QC setup Cs) (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (cells₀ : Array K)
     (coins : Coins) (fuel vLogRows : ℕ) (stmt : Statement) :
     QC (stagedRunG setup circuit cells₀ coins fuel vLogRows stmt)
-      (Cs + comCost (cellVars circuit.logRows) + 2 * comCost (cellVars circuit.logRows + 1) +
-        comCost (cellVars circuit.logRows + 3) + comCost (cellVars circuit.logRows + 4) + 38 +
-        6 * pOpen fuel + 6 * vOpen) := by
+      (Cs + 2 * comCost (cellVars circuit.logRows) + comCost (cellVars circuit.logRows + 4) + 22 +
+        3 * pOpen fuel + 3 * vOpen) := by
   unfold stagedRunG
   refine (cost_staged4 _ _ _ _ _ _ _ _ _ (cost_stageAG setup Cs hs circuit cells₀ coins stmt)
-    (fun a s₁ s₂ s₃ ↦ cost_stageBG circuit cells₀ coins a s₁ s₂ s₃)
+    (fun a s₁ s₂ s₃ ↦ cost_stageBG circuit cells₀ coins stmt a s₁ s₂ s₃)
     (fun a b s₁ s₂ s₃ s₄ ↦ cost_stageCG circuit cells₀ coins stmt a b s₁ s₂ s₃ s₄)
     (fun a b c s₁ s₂ s₃ s₄ s₅ ↦ cost_stageDG circuit hr cells₀ coins fuel vLogRows stmt a b c
       s₁ s₂ s₃ s₄ s₅)).mono ?_
@@ -951,10 +918,9 @@ theorem cost_stagedRunG (setup : OracleComp KeccakCalls (Tree × Commitment)) (C
 end Cost
 
 open Cost in
-/-- **The deployed staged run makes at most `2^48` block calls** (`228 197 329 439 321`): the setup's
-and the prover's commitments, the chain, the reductions, the six openings proved and verified. The
-circuit's size is read off its record (`membership_logRows`, `rfl`); nothing of the deployed circuit
-is evaluated. -/
+/-- **The deployed staged run makes at most `2^48` block calls**: the setup's and the prover's commitments,
+the chain, the reductions, the three openings proved and verified. The circuit's size is read off its record
+(`membership_logRows`, `rfl`); nothing of the deployed circuit is evaluated. -/
 theorem hcost_deployed :
     ∀ stmt w coins, Common.QueryCostAtMost (stagedRun stmt w coins) hashBlocks (2 ^ 48) := by
   intro stmt w coins

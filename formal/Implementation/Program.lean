@@ -10,7 +10,7 @@ import Implementation.Interp
 `quotient::protocol::reduce` again, over node indices: every operation the Rust verifier does on
 its scalars is looked up in the emitted graph (`look`), after the folds `record.rs`'s `Sym` does on
 constants (`add`, `mul`, `frob`). The program is `reduceIds`; `reduceIds_eq` checks, by evaluation
-in the kernel, that it finds every node it asks for and that the six PCS claims the contract checks
+in the kernel, that it finds every node it asks for and that the three PCS claims the contract checks
 declared (`claims`, resolved to their output words) are word for word the program's (`claimWords`: each
 claim's root, out-of-domain answer, point and value), and `checkId_eq` that the value it requires nonzero
 is `nonzero`'s. So the graph holds the Rust verifier's
@@ -71,30 +71,28 @@ def frob (a : Nat) : Option Nat :=
 
 /-! ## The transcript (`contract::Recorder`) -/
 
-/-- The leaves: the seed, the statement's halves, the challenges, the out-of-domain answers and the
-proof's other scalars, as `reduce` reads them. -/
+/-- The leaves: the constant one, the statement's eight `K`-words, the challenges, the out-of-domain answers and
+the proof's other scalars, as `reduce` reads them. -/
 structure Leaves where
   one : Nat
   s : List Nat
   oods : List Nat
   alpha : Nat
   beta : Nat
-  gamma : Nat
+  mu : Nat
   t : Nat
-  a : List Nat
+  v : List Nat
   next : Nat
   rho : Nat
-  qv : Nat
-  gv : Nat
   deriving Repr, DecidableEq
 
-/-- The transcript as the recorder writes it: the witness table's commitment (its root's two
-scalars, its out-of-domain answer), three challenges, the commitments of `H`, `Q`, `G`, `t`, the four
-values and `next`, `ρ`; then `Q`'s and `G`'s values. -/
+/-- The transcript as the recorder writes it: the witness table's commitment (its root's two scalars, its
+out-of-domain answer), three challenges, the quotient table's commitment, `t`, the three values and `next`,
+`ρ`. -/
 def chain : Option Leaves := do
   let seed ← look .seed
   let one ← cnst 1
-  let s ← [0, 1, 2, 3].mapM fun k => look (.statement k)
+  let s ← [0, 1, 2, 3, 4, 5, 6, 7].mapM fun k => look (.statement k)
   let r0 ← look (.root 0)
   let r1 ← look (.root 1)
   let wo ← look (.input 0)
@@ -103,30 +101,22 @@ def chain : Option Leaves := do
   let st2 ← look (.hash st1 [])
   let beta ← look (.low st2)
   let st3 ← look (.hash st2 [])
-  let gamma ← look (.low st3)
-  let h0 ← look (.root 2)
-  let h1 ← look (.root 3)
-  let ho ← look (.input 1)
-  let q0 ← look (.root 4)
-  let q1 ← look (.root 5)
-  let qo ← look (.input 2)
-  let g0 ← look (.root 6)
-  let g1 ← look (.root 7)
-  let go ← look (.input 3)
-  let st4 ← look (.hash st3 [h0, h1, ho, q0, q1, qo, g0, g1, go])
+  let mu ← look (.low st3)
+  let t0 ← look (.root 2)
+  let t1 ← look (.root 3)
+  let tz ← look (.input 1)
+  let st4 ← look (.hash st3 [t0, t1, tz])
   let t ← look (.low st4)
-  let a ← [4, 5, 6, 7].mapM fun i => look (.input i)
-  let next ← look (.input 8)
-  let st5 ← look (.hash st4 (a ++ [next]))
+  let v ← [2, 3, 4].mapM fun i => look (.input i)
+  let next ← look (.input 5)
+  let st5 ← look (.hash st4 (v ++ [next]))
   let rho ← look (.low st5)
-  let qv ← look (.input 9)
-  let gv ← look (.input 10)
-  pure { one, s, oods := [wo, ho, qo, go], alpha, beta, gamma, t, a, next, rho, qv, gv }
+  pure { one, s, oods := [wo, tz], alpha, beta, mu, t, v, next, rho }
 
 /-- The leaves of the graph. -/
 def leaves₀ : Leaves :=
-  { one := 1, s := [2, 3, 4, 5], oods := [8, 17, 20, 23], alpha := 10, beta := 12, gamma := 14,
-    t := 25, a := [26, 27, 28, 29], next := 30, rho := 32, qv := 651, gv := 652 }
+  { one := 1, s := [2, 3, 4, 5, 6, 7, 8, 9], oods := [12, 21], alpha := 14, beta := 16, mu := 18, t := 23,
+    v := [24, 25, 26], next := 27, rho := 29 }
 
 set_option maxRecDepth 20000 in
 theorem chain_eq : chain = some leaves₀ := by decide +kernel
@@ -208,105 +198,58 @@ def backInv : Nat → List (Nat × Nat) → Option (List Nat)
     let tail ← backInv running' rest
     pure (inv :: tail)
 
-/-- `w_1 + 1` for the cells of the second half of a row, `w_1` for the first. -/
-def secondOf (w1 one : Nat) (second : Bool) : Option Nat := if second then add w1 one else some w1
-
-/-- `cell(shift, second)`: `a_0 + (t + shift) a_1 + w_1' (a_2 + (t + shift) a_3)`. -/
-def cell (L : Leaves) (w1 : Nat) (shift : Nat) (second : Bool) : Option Nat := do
-  let sh ← cnst shift
-  let first ← add L.t sh
-  let snd ← secondOf w1 L.one second
-  let m1 ← mul first (L.a.getD 1 0)
-  let s1 ← add (L.a.getD 0 0) m1
-  let m3 ← mul first (L.a.getD 3 0)
-  let s3 ← add (L.a.getD 2 0) m3
-  let m2 ← mul snd s3
-  add s1 m2
-
-/-- The constant that weighs coordinate `k < 8` of the public region, plus one
-(`1 + coordinate_weight(k)`): bit weights `x^1`, `0`, `x^2`, `x^4`, …, `x^32`, `y`. -/
-def slopeConst (k : Nat) : Nat :=
-  1 ^^^ (if k = 0 then 2 else if k = 1 then 0 else if k < 7 then 2 ^ (2 ^ (k - 1)) else B64)
-
-/-- The slope of coordinate `k`: the constant `1 + coordinate_weight(k)` below 8, then
-`1 + γ^(2^(k - 8))`. -/
-def slopeOf (one : Nat) (gammas : List Nat) (k : Nat) : Option Nat :=
-  if k < 8 then cnst (slopeConst k) else add one (gammas.getD (k - 8) 0)
-
-/-- What the first stage of `reduce` leaves: the `w` chain, the row's first cell `x`, the gate, the
-target, the rows' polynomial, the copy identity's product of denominators and its value. -/
+/-- What the first stage of `reduce` leaves: the `w` chain, the gate, the rows' polynomial, the denominators'
+pieces (`d`, `d'`, their product, `ζ = Z t`), the conic's `a`, `b` and the constant `θ`. -/
 structure StageA where
   w : List Nat
-  x : Nat
   gate : Nat
-  target : Nat
   rows : Nat
+  d : Nat
+  dNext : Nat
   product : Nat
-  copies : Nat
+  zeta : Nat
+  theta : Nat
+  conicA : Nat
+  conicB : Nat
   deriving Repr, DecidableEq
 
-/-- `reduce`, up to the copy identity. -/
+/-- `reduce`, up to the denominators: `w_k(t)`, the gate `V + Y + C + X·C` of the values read, the rows'
+polynomial, `d`, `d'`, `ζ`, and `witness_conic`. -/
 def stageA (L : Leaves) : Option StageA := do
   let m := 24
   let one := L.one
   let t := L.t
-  let w ← wChain t (m + 1)
-  let w1 := w.getD 1 0
-  let theta := beta.getD 1 0
-  let c0 ← cell L w1 0 false
-  let c1 ← cell L w1 1 false
-  let c2 ← cell L w1 theta true
-  let c3 ← cell L w1 (theta ^^^ 1) true
-  let x := c0
-  -- `gate([x, y, c, v]) = v + x + c + y · c`
-  let g1 ← add c3 c0
-  let g2 ← add g1 c2
-  let g3 ← mul c1 c2
-  let gate ← add g2 g3
-  -- the public weight
-  let gamma := L.gamma
-  let gamma2 ← mul gamma gamma
-  let gamma4 ← mul gamma2 gamma2
-  let gammas := [gamma, gamma2, gamma4]
-  let pub0 ← foldO (fun acc k => do
-      let o ← add one (w.getD k 0)
-      mul acc o) one (List.range' 11 (m - 11))
-  let pubW ← foldO (fun acc k => do
-      let coordinate ← foldO (fun acc' j => do
-          let bc ← cnst (coords.getD (j - k) 0)
-          let p ← mul bc (w.getD j 0)
-          add acc' p) (w.getD k 0) (List.range' (k + 1) (11 - (k + 1)))
-      let slope ← slopeOf one gammas k
-      let cs ← mul coordinate slope
-      let o ← add one cs
-      mul acc o) pub0 (List.range 11)
-  -- the target
-  let s := L.s
-  let tg1 ← mul gamma (s.getD 1 0)
-  let tg2 ← add (s.getD 0 0) tg1
-  let tg3 ← mul gamma (s.getD 3 0)
-  let tg4 ← add (s.getD 2 0) tg3
-  let tg5 ← mul gamma2 tg4
-  let tg6 ← add tg2 tg5
-  let target ← add tg6 gamma4
+  let w ← wChain t m
+  let x := L.v.getD 0 0
+  let c := L.v.getD 1 0
+  let vy := L.v.getD 2 0
+  -- `gate = vy + c + x · c`
+  let g1 ← add vy c
+  let g2 ← mul x c
+  let gate ← add g1 g2
   -- the rows' polynomial
   let zr ← cnst 0
   let rows ← foldO (fun acc k => do
       let tk ← cnst (tau.getD k 0)
       let p ← mul tk (w.getD k 0)
       add acc p) zr (List.range (m - 1))
-  -- the copy identity
+  -- the copy identity's denominators
   let ax ← add L.alpha x
   let bt ← mul L.beta t
   let d ← add ax bt
   let bn ← mul L.beta L.next
   let dNext ← add ax bn
   let product ← mul d dNext
-  let dd ← add d dNext
-  let px ← mul pubW x
-  let pxp ← mul px product
-  let copies ← add dd pxp
-  pure { w, x, gate, target, rows, product, copies }
+  let zeta ← mul (w.getD m 0) t
+  -- `witness_conic`: `((t + ω θ)(1 + ρ) + ρ, θ (1 + ρ))`
+  let theta ← cnst (beta.getD 1 0)
+  let rho1 ← add one L.rho
+  let ot ← mul (w.getD 1 0) theta
+  let tot ← add t ot
+  let ca0 ← mul tot rho1
+  let conicA ← add ca0 L.rho
+  let conicB ← mul theta rho1
+  pure { w, gate, rows, d, dNext, product, zeta, theta, conicA, conicB }
 
 /-- What the second stage leaves: the denominators, their prefix products, and their product. -/
 structure StageB where
@@ -315,13 +258,17 @@ structure StageB where
   total : Nat
   deriving Repr, DecidableEq
 
-/-- `reduce`'s denominators (every `1 + w_k`, the copy identity's, the rows' polynomial, the product,
-`1 + ρ`) and their prefix products: the value it requires nonzero. -/
+/-- `reduce`'s denominators (every `1 + w_k` below the digit, `1 + ζ`, `ζ + d d'`, the rows' polynomial, every
+`t + p_k`, `a + b`) and their prefix products: the value it requires nonzero. -/
 def stageB (L : Leaves) (A : StageA) : Option StageB := do
-  let ws ← mapO (fun k => add L.one (A.w.getD k 0)) (List.range (24 + 2))
-  let cw ← add A.product (A.w.getD 24 0)
-  let r1 ← add L.one L.rho
-  let dens := ws ++ [cw, A.rows, A.product, r1]
+  let ws ← mapO (fun k => add L.one (A.w.getD k 0)) (List.range 24)
+  let oz ← add L.one A.zeta
+  let zp ← add A.zeta A.product
+  let ps ← mapO (fun k => do
+      let p ← cnst (pinPoints.getD k 0)
+      add L.t p) (List.range 11)
+  let ab ← add A.conicA A.conicB
+  let dens := ws ++ [oz, zp, A.rows] ++ ps ++ [ab]
   let pre ← prefixes L.one dens
   pure { dens, pre, total := pre.getD dens.length 0 }
 
@@ -331,98 +278,99 @@ structure Out where
   wVal : Nat
   fPt : List Nat
   fVal : Nat
-  hPt : List Nat
-  hVal : Nat
-  qPt : List Nat
-  gPt : List Nat
-  sum : Nat
+  cPt : List Nat
+  cVal : Nat
   deriving Repr, DecidableEq
 
-/-- `quotient_parts`, on indices: the three parts' points, `Q`'s weight and `G`'s. -/
-def parts (L : Leaves) (point : List Nat) : Option (List Nat × List Nat × List Nat × Nat × Nat) := do
-  let m := 24
-  let low := point.take m
-  let at_ (k : Nat) : Nat := point.getD (m + k) 0
-  let (d0, d1, k0, k1, e0, e1) := (at_ 0, at_ 1, at_ 2, at_ 3, at_ 4, at_ 5)
-  let one := L.one
-  let ok1 ← add one k1
-  let qWeight ← mul k0 ok1
-  let od1 ← add one d1
-  let ok0 ← add one k0
-  let g1 ← mul od1 ok0
-  let g2 ← mul g1 k1
-  let oe0 ← add one e0
-  let g3 ← mul g2 oe0
-  let oe1 ← add one e1
-  let gWeight ← mul g3 oe1
-  pure (low ++ [d0, e0, e1], low ++ [d0, d1, e0, e1], low ++ [d0], qWeight, gWeight)
+/-- The pins' term of anchor `k` (`reduce`'s loop): a word's `λ_k`-weighted statement word, the constant `λ_k v_k`
+of `1` and `3`, nothing for `0`. -/
+def pinStep (L : Leaves) (pinInv : Nat → Nat) (acc k : Nat) : Option Nat :=
+  if k < 8 then do
+    let lam ← cnst (pinWeights.getD k 0)
+    let weight ← mul (L.s.getD k 0) lam
+    let term ← mul weight (pinInv k)
+    add acc term
+  else if k = 8 then some acc
+  else do
+    let weight ← cnst (mulE (pinWeights.getD k 0) (if k = 9 then 1 else 3))
+    let term ← mul weight (pinInv k)
+    add acc term
 
 /-- `reduce`'s one inversion, and the claims. -/
 def stageC (L : Leaves) (A : StageA) (B : StageB) : Option Out := do
   let m := 24
   let one := L.one
+  let t := L.t
   let w := A.w
+  let x := L.v.getD 0 0
+  let c := L.v.getD 1 0
+  let vy := L.v.getD 2 0
   let dens := B.dens
   let running ← inverse B.total
   let invsRev ← backInv running ((List.range dens.length).reverse.map fun i => (B.pre.getD i 0, dens.getD i 0))
   let inverses := invsRev.reverse
-  let u ← mapO (fun k => mul (w.getD k 0) (inverses.getD k 0)) (List.range (m + 2))
-  let copyInverse := inverses.getD (m + 2) 0
-  let rowsInverse := inverses.getD (m + 3) 0
-  let productInverse := inverses.getD (m + 4) 0
-  let rhoInverse := inverses.getD (m + 5) 0
+  let u0 ← mapO (fun k => mul (w.getD k 0) (inverses.getD k 0)) (List.range m)
+  let um ← mul A.zeta (inverses.getD m 0)
+  let u := u0 ++ [um]
+  let copyInverse := inverses.getD (m + 1) 0
+  let rowsInverse := inverses.getD (m + 2) 0
+  let pinInv (k : Nat) : Nat := inverses.getD (m + 3 + k) 0
+  let conicInverse := inverses.getD (m + 3 + 11) 0
   let middle ← foldO (fun acc k => mul acc (inverses.getD k 0)) (inverses.getD 2 0) (List.range' 3 (m - 3))
   let ws0 ← mul middle (inverses.getD 0 0)
   let wiringScale ← mul ws0 (inverses.getD 1 0)
-  let qs0 ← mul wiringScale (inverses.getD m 0)
-  let quotientScale ← mul qs0 (inverses.getD (m + 1) 0)
-  -- the claims
-  let rho := L.rho
-  let a := L.a
-  let rho2 ← mul rho rho
-  let o1 ← add one rho2
-  let o2 ← add (a.getD 0 0) (a.getD 1 0)
-  let o3 ← mul rho o2
-  let o4 ← add (a.getD 0 0) o3
-  let o5 ← mul o1 o4
-  let o6 ← add (a.getD 2 0) (a.getD 3 0)
-  let o7 ← mul rho o6
-  let o8 ← add (a.getD 2 0) o7
-  let o9 ← mul rho2 o8
-  let opened ← add o5 o9
+  let tableScale ← mul wiringScale (inverses.getD m 0)
+  -- `g(t) = gate / Z_R + (w + v) / Z_P`
+  let pp ← foldO (fun acc k => mul acc (pinInv k)) one (List.range 11)
+  let p0 ← mul x pp
+  let pinned ← foldO (pinStep L pinInv) p0 (List.range 11)
+  let gr ← mul A.gate rowsInverse
+  let g ← add gr pinned
+  -- the copy claim
   let sc ← cnst Emitted.scale
-  let i1 ← add one rho
-  let i2 ← mul i1 A.copies
-  let i3 ← mul i2 A.rows
-  let i4 ← mul rho A.product
-  let i5 ← mul i4 A.gate
-  let identities ← add i3 i5
-  let wmc ← mul (w.getD m 0) copyInverse
+  let kappa ← mul A.product copyInverse
+  let cv0 ← mul sc tableScale
+  let cv1 ← mul cv0 t
+  let dd ← add A.d A.dNext
+  let mz ← mul L.mu (w.getD m 0)
+  let mzg ← mul mz g
+  let r ← add dd mzg
+  let cv2 ← mul cv1 r
+  let cVal ← mul cv2 copyInverse
+  -- the witness claim on the conic (`witness_weights`)
+  let z1 ← mul A.conicA conicInverse
+  let omega := w.getD 1 0
+  let rho1 ← add one L.rho
+  let z11 ← add one z1
+  let e00 ← mul rho1 z11
+  let e01 ← mul rho1 z1
+  let e11 ← mul L.rho z1
+  let tho ← mul A.theta omega
+  let k30 ← add t tho
+  let k31 ← add k30 A.theta
+  let k3 ← add k31 one
+  let tw ← mul t omega
+  let twe ← mul tw e00
+  let l0 ← add e11 twe
+  let we ← mul omega e00
+  let ewe ← add e01 we
+  let kk ← mul k3 ewe
+  let lambda1 ← add l0 kk
+  let lx ← add e00 lambda1
+  let lvy ← add ewe lambda1
+  let o1 ← mul lx x
+  let o2 ← mul lambda1 c
+  let o3 ← add o1 o2
+  let o4 ← mul lvy vy
+  let opened ← add o3 o4
+  let wVal ← mul opened middle
+  let fVal ← mul L.next wiringScale
   let cy0 ← cnst y0
   let cy1 ← cnst y1
-  let qv0 ← mul sc quotientScale
-  let qv1 ← mul qv0 copyInverse
-  let qv2 ← mul qv1 rowsInverse
-  let quotientValue ← mul qv2 identities
-  let (hPt, qPt, gPt, qWeight, gWeight) ← parts L (u ++ [wmc, rho, cy0, cy1])
-  let hi0 ← add one (w.getD (m + 1) 0)
-  let cw ← add A.product (w.getD m 0)
-  let hi1 ← mul hi0 cw
-  let hi2 ← mul hi1 productInverse
-  let hInverse ← mul hi2 rhoInverse
-  let hv0 ← mul qWeight L.qv
-  let hv1 ← add quotientValue hv0
-  let hv2 ← mul gWeight L.gv
-  let hv3 ← add hv1 hv2
-  let hVal ← mul hv3 hInverse
-  let wv0 ← mul opened middle
-  let wVal ← mul wv0 (inverses.getD m 0)
-  let fVal ← mul L.next wiringScale
-  let sum ← mul sc A.target
   pure {
-    wPt := [rho, rho2] ++ (u.drop 2).take (m - 1), wVal
+    wPt := [L.rho, z1] ++ (u.drop 2).take (m - 2), wVal
     fPt := u.take m, fVal
-    hPt, hVal, qPt, gPt, sum }
+    cPt := u ++ [cy0, cy1, kappa], cVal }
 
 /-- **`reduce`, over the graph.** -/
 def reduceIds : Option Out := do
@@ -438,21 +386,13 @@ def checkId : Option Nat := do
   let B ← stageB L A
   pure B.total
 
-/-- The fixed point of the sum's claim (`protocol::sum_point`), as words: `[1; 24]`, `0`, then `y0`,
-`y1`. -/
-def sumPointWords : List Nat := List.replicate 24 1 ++ [0, y0, y1]
-
-/-- **The words of the six claims** from what `reduce` leaves (`quotient::recorded`): each its root's
-word, its out-of-domain answer's, its point's and its value's; in the order of `Claims::all`, the roots
-of the witness table, `H`, `Q`, `G` the calldata's words at `64 + 32 k`, the circuit's commitment the
-stored one. -/
+/-- **The words of the three claims** from what `reduce` leaves (`quotient::recorded`): each its root's word,
+its out-of-domain answer's, its point's and its value's; in the order of `Claims::on`, the roots of the witness
+table and of the quotient table the calldata's words at `64` and `96`, the circuit's commitment the stored one. -/
 def claimWords (L : Leaves) (o : Out) : List (Word × Word × List Word × Word) :=
   [(.calldata 64, .node (L.oods.getD 0 0), o.wPt.map .node, .node o.wVal),
    (.storedRoot, .storedOod, o.fPt.map .node, .node o.fVal),
-   (.calldata 96, .node (L.oods.getD 1 0), o.hPt.map .node, .node o.hVal),
-   (.calldata 128, .node (L.oods.getD 2 0), o.qPt.map .node, .node L.qv),
-   (.calldata 160, .node (L.oods.getD 3 0), o.gPt.map .node, .node L.gv),
-   (.calldata 96, .node (L.oods.getD 1 0), sumPointWords.map .const, .node o.sum)]
+   (.calldata 96, .node (L.oods.getD 1 0), o.cPt.map .node, .node o.cVal)]
 
 /-- An output word by its index (`Word.const 0` past the end). -/
 def outAt (i : Nat) : Word := outputs.getD i (.const 0)

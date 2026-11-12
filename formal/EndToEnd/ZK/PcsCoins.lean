@@ -113,6 +113,18 @@ theorem runWithRandomPermutation_coinEs (n : ℕ) :
   have := indep_coinEs _ lazy_coin n
   simpa [coinEs, simulateQ_list_mapM, eDist] using this
 
+/-- An expectation over an image. -/
+theorem tsum_map {γ δ : Type} (X : ProbComp γ) (f : γ → δ) (g : δ → ℝ≥0∞) :
+    ∑' o, Pr{let y ← f <$> X}[y = o] * g o = ∑' a, Pr{let y ← X}[y = a] * g (f a) := by
+  rw [map_eq_bind_pure_comp, tsum_prEvent_bind_mul]
+  refine tsum_congr fun a ↦ ?_
+  congr 1
+  rw [Function.comp_apply]
+  classical
+  simp only [RProg.prEvent_pure_eq]
+  rw [tsum_eq_single (f a) fun b hb ↦ by rw [ite_eq_right (Ne.symm hb), zero_mul]]
+  simp
+
 /-! ### Products of uniform draws -/
 
 theorem prEvent_mapM_const {δ α : Type} (X : ProbComp α) :
@@ -149,9 +161,9 @@ theorem prEvent_mapM_const {δ α : Type} (X : ProbComp α) :
     rw [tsum_congr hterm, tsum_ite_eq]
 
 
-theorem prEvent_coinEs (rs : List E) (h : rs.length = 10) :
-    Pr{let y ← runWithRandomPermutation (coinEs 10)}[y = rs] = (rs.map fun r ↦ Pr{let y ← eDist}[y = r]).prod := by
-  rw [runWithRandomPermutation_coinEs, prEvent_mapM_const eDist (List.range 10) rs (by simpa using h)]
+theorem prEvent_coinEs (rs : List E) (h : rs.length = 5) :
+    Pr{let y ← runWithRandomPermutation (coinEs 5)}[y = rs] = (rs.map fun r ↦ Pr{let y ← eDist}[y = r]).prod := by
+  rw [runWithRandomPermutation_coinEs, prEvent_mapM_const eDist (List.range 5) rs (by simpa using h)]
 
 /-- **Every element of `E` is a possible uniform draw.** -/
 theorem prEvent_eDist_ne_zero (r : E) : Pr{let y ← eDist}[y = r] ≠ 0 := by

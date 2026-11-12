@@ -10,7 +10,7 @@ import LeanVM.Protocol.ExperimentBridge
 # The completeness experiment, coins first, with two calls (the PCS claims)
 
 `PcsQuotient.completenessExperiment` runs, against the lazily sampled permutation, the setup, the
-coins (`sampleCoins`: `12 + 16 + 24` uniform words), the honest prover and the verifier. Here:
+coins (`sampleCoins`: `32 + 6 + 4` uniform words), the honest prover and the verifier. Here:
 
 * **the coins are drawn first** (`completenessExperiment_eq`): the coins touch no edge of the
   permutation, and two draws of countable outcomes commute in distribution (the raw coin words
@@ -33,18 +33,18 @@ namespace E2ECompleteness.Pcs
 
 /-! ## The coins -/
 
-/-- The raw coins: the `12 + 16 + 24` words. -/
+/-- The raw coins: the `32 + 6` words. -/
 abbrev RawCoins : Type := List UInt64
 
 /-- The coins of the raw words (`sampleCoins`). -/
 def coinsOf (w : RawCoins) : Coins :=
   let word (k : ℕ) : K := K.ofLane (w.getD k 0)
-  ⟨fun j i ↦ word (3 * j.val + i.val), fun r ↦ word (12 + r.val),
-    fun e i ↦ word (12 + randomRows + hBlind * e.val + i.val)⟩
+  ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val),
+    fun k ↦ word (randomWords + 3 * freeBlind + k.val)⟩
 
 /-- The raw coins' draw. -/
 def rawCoins : OracleComp RandomPermutationOracles RawCoins :=
-  (List.range (12 + randomRows + 3 * hBlind)).mapM fun _ ↦ coinWord
+  (List.range (randomWords + 3 * freeBlind + slackWords)).mapM fun _ ↦ coinWord
 
 theorem sampleCoins_eq : sampleCoins = coinsOf <$> rawCoins := by
   simp only [sampleCoins, rawCoins, bind_pure_comp]

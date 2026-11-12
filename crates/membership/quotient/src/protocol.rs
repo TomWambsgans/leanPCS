@@ -117,6 +117,18 @@ pub const H_BLIND: usize = 3;
 /// The blinding coefficients a proof draws per limb: `b_0, b_1` of [`H_BLIND`].
 pub const FREE_BLIND: usize = H_BLIND - 1;
 
+/// The **slack words** of the quotient table: a word of `K` a proof draws for each of the coefficients [`SLACK_AT`] of
+/// `q`'s digit 0, written in that coefficient's limb 3 and added to its limbs 0 and 1. A coefficient's four limbs
+/// `(l_0, l_1, l_2, l_3)` are read as `l_0 + Y l_1 + Y^2 l_2 + Y^3 l_3` and `Y^3 = Y + 1`, so `(s, s, 0, s)` reads zero:
+/// the table's polynomials, hence every claim, do not move. Its out-of-domain answer moves by `s` times a weight that
+/// depends on the out-of-domain point alone, not on the witness or the random rows (`PROTOCOL.md`, "Zero
+/// knowledge"): with four of them, at coefficients `0`, `1`, `2`, `4` (weights `c`, `c u_0`, `c u_1`, `c u_2`, `u_k`
+/// the point's coordinate ratios), the answer is uniform but where those four weights fail to span `E` over `K`.
+pub const SLACK_WORDS: usize = 4;
+
+/// The coefficients of `q`'s digit 0 whose limb 3 holds a slack word ([`SLACK_WORDS`]).
+pub const SLACK_AT: [usize; SLACK_WORDS] = [0, 1, 2, 4];
+
 /// The fewest rows: below `2^13` the witness and wiring tables (`m` variables) are smaller than the `2^15` words
 /// WHIR commits.
 pub const MIN_LOG_ROWS: usize = 13;
@@ -143,7 +155,7 @@ pub fn table_vars(log_rows: usize) -> [usize; 3] {
 /// - kind 0, limb `e < 3`: limb `e` of the quotient, `q = A_0 + ζ A_1`;
 /// - kind 1, limb `e < 3`: limb `e` of `x h = B_0 + ζ B_1`: `B_0 = x h_low`, `B_1` the blinding's [`H_BLIND`]
 ///   coefficients;
-/// - limb 3 of either kind: zero.
+/// - limb 3 of either kind: zero, but for the slack words ([`SLACK_WORDS`]) at kind 0, digit 0, which read zero.
 ///
 /// A claim at `(u, u_d, y_0, y_1, k)` ([`extension`]'s `y`) reads `(1 + k) q + k (x h)` at `t`, up to the scale of
 /// [`extension`] and the multilinear's normalisation, `q` and `x h` as `K`-limbs of `E`-polynomials (a limb 3, which
@@ -163,6 +175,8 @@ pub struct Randomness {
     /// `blind[e][i]`: coefficient `2^m + i` of limb `e` of the sum's polynomial (coefficient `2^m + 2` is solved for:
     /// [`H_BLIND`]).
     pub blind: [[F64; FREE_BLIND]; 3],
+    /// The quotient table's slack words ([`SLACK_WORDS`]), in the order of [`SLACK_AT`].
+    pub slack: [F64; SLACK_WORDS],
 }
 
 /// The key derivation's tags: each in one use, none a prefix of another, each followed by fields of fixed length
@@ -175,13 +189,13 @@ impl Randomness {
     /// The randomness of a proof from its 32-byte `seed`, by Keccak-256 with distinct tags. A key binds the seed,
     /// the transcript's label (the protocol, the circuit's commitment and the statement: [`label`]) and a digest of
     /// the witness's cells; the words are those of Keccak-256(tag ‖ key ‖ `k`), `k = 0, 1, ...`, four a block, in
-    /// order: the random rows' words, the blinding (`blind[e][i]` word `FREE_BLIND e + i`). A seed reused for another
+    /// order: the random rows' words, the blinding (`blind[e][i]` word `FREE_BLIND e + i`), the slack words. A seed reused for another
     /// witness or another statement gives unrelated randomness; reused for the same ones, it gives the same proof
     /// again. The seed must still be fresh per proof and secret: [`prove`] draws it from the operating system.
     pub fn derive(seed: &[u8; 32], index: &Commitment, statement: &Statement, cells: &[F64]) -> Self {
         let label = label(index, statement);
         let key = primitives::hash::hash(&[KDF_KEY, seed, &label, &cells_digest(cells)].concat());
-        const WORDS: usize = RANDOM_WORDS + 3 * FREE_BLIND;
+        const WORDS: usize = RANDOM_WORDS + 3 * FREE_BLIND + SLACK_WORDS;
         let words: Vec<F64> = (0..WORDS.div_ceil(4) as u8)
             .flat_map(|k| {
                 let block = primitives::hash::hash(&[KDF_WORDS, &key, &[k]].concat());
@@ -191,6 +205,7 @@ impl Randomness {
         Self {
             rows: std::array::from_fn(|r| words[r]),
             blind: std::array::from_fn(|e| std::array::from_fn(|i| words[RANDOM_WORDS + FREE_BLIND * e + i])),
+            slack: std::array::from_fn(|k| words[RANDOM_WORDS + 3 * FREE_BLIND + k]),
         }
     }
 }
@@ -788,7 +803,7 @@ pub(crate) fn prove_with_randomness(
     cells: &[F64],
     randomness: &Randomness,
 ) -> Proved {
-    let Randomness { rows, blind } = randomness;
+    let Randomness { rows, blind, slack } = randomness;
     assert!(
         supported(circuit.log_rows),
         "2^{} rows: the layouts take 2^{MIN_LOG_ROWS} to 2^{MAX_LOG_ROWS}",
@@ -1114,6 +1129,12 @@ pub(crate) fn prove_with_randomness(
     for (e, digit) in rest.chunks_exact_mut(n).skip(1).step_by(2).enumerate() {
         zero_par(digit);
         digit[..H_BLIND].copy_from_slice(&[blind[e][0] + spill[e], blind[e][1], b2_limbs[e]]);
+    }
+    // The slack words: `(s, s, 0, s)` in limbs 0 to 3 of `q`'s coefficient, which reads zero ([`SLACK_WORDS`]).
+    for (&at, &s) in SLACK_AT.iter().zip(slack) {
+        quotients[table_slot(0, 3, n) + at] = s;
+        quotients[table_slot(0, 0, n) + at] += s;
+        quotients[table_slot(0, 1, n) + at] += s;
     }
     drop(part);
     drop(inner);
@@ -1533,7 +1554,8 @@ pub(crate) mod tests {
 
     /// The prover's output, pinned: the proof and its three openings on the toy circuit, so a change to how the
     /// prover computes cannot change a byte of what it proves. (Before the sum's claim left, with four claims, the pin
-    /// was `c9938962…`; with six claims on four commitments, `114bb485…`; before the EIP's PCS claims, `8e39cf6a…`.)
+    /// was `c9938962…`; with six claims on four commitments, `114bb485…`; before the EIP's PCS claims, `8e39cf6a…`;
+    /// before the slack words, `5b7e5aeb…`.)
     #[test]
     fn proofs_are_pinned() {
         let mut rng = Rng::new(0x1D);
@@ -1551,7 +1573,7 @@ pub(crate) mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(hex, "5b7e5aeb6aa63efa7e23b5ebce6c36d668e90d319f2d184286ecf6201a18a865");
+        assert_eq!(hex, "306673ab63d7411d34e0622d162df833bd21223059d2a3e0aa8d5027d3f6ffb2");
     }
 
     /// The polynomials of `table`'s kind `kind`, limb `limb`, its two digits.
@@ -1591,7 +1613,15 @@ pub(crate) mod tests {
         words.resize(16 * n, F64::ZERO);
         for kind in 0..2 {
             let (low, high) = digits(&words, kind, 3, n);
-            assert!(low.iter().chain(high).all(|w| w.is_zero()), "limb 3 of kind {kind}");
+            let slack = |i: usize| kind == 0 && SLACK_AT.contains(&i);
+            assert!(low.iter().enumerate().all(|(i, w)| slack(i) || w.is_zero()), "limb 3 of kind {kind}");
+            assert!(high.iter().all(|w| w.is_zero()), "limb 3 of kind {kind}, digit 1");
+        }
+        // The slack words read zero: `(s, s, 0, s)` is `s (1 + Y + Y^3) = 0`, so `q`'s coefficients are the limbs 0 and
+        // 1 less limb 3.
+        for &at in &SLACK_AT {
+            let s = digits(&words, 0, 3, n).0[at];
+            assert!(!s.is_zero(), "a slack word at {at}");
         }
         for limb in 0..3 {
             let (b0, b1) = digits(&words, 1, limb, n);

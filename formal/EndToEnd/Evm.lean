@@ -8,15 +8,15 @@ import Evm.Calldata
 
 The deployed verifier is an EVM contract (`crates/membership/evm`) compiled from an operation graph recorded
 from the Rust verifier (`crates/membership/evm/src/record.rs`): it reads a statement and the reduction's proof
-from calldata (`verify(bytes32,bytes32,bytes)`, packed: the four roots as words, eleven scalars, the index of
-the transaction's frame of PCS claims), runs `quotient::protocol::reduce`, and checks that the transaction
-declares the six PCS claims the reduction leaves (each claim's EIP encoding
+from calldata (`(bytes32 y, bytes32 root, bytes proof)` packed, no selector, 273 bytes: the two roots as words,
+six scalars, the index of the transaction's frame of PCS claims), runs `quotient::protocol::reduce`, and checks
+that the transaction declares the three PCS claims the reduction leaves (each claim's EIP encoding
 `1 ‖ n ‖ root ‖ ood ‖ point ‖ value`, hashed with `KECCAK256`, is payload `k` of the frame), leaving them to
 the block's proof. F5 (`formal/Implementation`) is that graph as Lean data and its interpreter, and proves
 (`Implementation.run_calldata`) that on the calldata of a statement and a proof it checks declared exactly
-the encodings `PcsQuotient.pcsClaimBytes` of the Statement's reduction's six claims on their commitments.
+the encodings `PcsQuotient.pcsClaimBytes` of the Statement's reduction's three claims on their commitments.
 
-**What is proved**, for every statement `stmt`, proof `proof` (the reduction's proof and the six openings),
+**What is proved**, for every statement `stmt`, proof `proof` (the reduction's proof and the three openings),
 frame index and circuit commitment `index` (the contract's storage: the root's bytes, the out-of-domain
 answer's word), with the deployed Keccak-256:
 
@@ -31,7 +31,7 @@ answer's word), with the deployed Keccak-256:
 * **`evm_accepts_iff_exists`** (`Evm/Calldata.lean`), over **all** calldata: with `pcsOpen` given openings
   `o`, the contract accepts `cd` exactly when `cd` is the calldata of a statement, a reduction proof and a
   frame index that, with those openings, `PcsQuotient.verify` accepts: the contract reverts on calldata of
-  another length or selector (`accepts_of_not_wellFormed`), and every other calldata is a proof's
+  another length (`accepts_of_not_wellFormed`), and every calldata of the verifier's length is a proof's
   (`calldata_surjective`, the inverse of `quotient.rs`'s `calldata`, the tests' `parse` in
   `crates/membership/evm/src/lean.rs`).
 
@@ -39,7 +39,7 @@ answer's word), with the deployed Keccak-256:
 
 * *Bytecode = graph*: that the deployed bytecode computes the recorded graph as F5's interpreter reads it
   (`Implementation.run`, `accepts`: `CALLDATALOAD`, `XOR`, `FIELD_MUL`, `KECCAK256` of `MSTORE`d words, the
-  length and selector checks, the nonzero check, the storage reads, the claims' packing and their hashes
+  length check, the nonzero check, the storage reads, the claims' packing and their hashes
   compared with the frame's payloads, returning the word 1): `crates/membership/evm`'s parity tests
   (`quotient.rs`, `adversarial.rs`, `lean.rs`: `vectors_are_the_contracts_calls`) and
   `Implementation/Diff.lean` (the interpreter against the Rust verifier); `Implementation/Graph.lean` is

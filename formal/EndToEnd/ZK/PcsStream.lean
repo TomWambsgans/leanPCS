@@ -29,12 +29,14 @@ noncomputable def interpS : FProg A α → List E → StateT (Edges × A) ProbCo
   | .ret a, _ => pure a
   | .step m k, es => m >>= fun b ↦ interpS (k b) es
   | .q x k, es => idealPermE (es.headD 0) x >>= fun y ↦ interpS (k y) es.tail
+  | .r k, es => interpS (k (es.headD 0)) es.tail
 
 /-- **Exactly `n` tracked queries on every path.** -/
 def CountQ : FProg A α → ℕ → Prop
   | .ret _, n => n = 0
   | .step _ k, n => ∀ b, CountQ (k b) n
   | .q _ k, n => ∃ n', n = n' + 1 ∧ ∀ y, CountQ (k y) n'
+  | .r k, n => ∃ n', n = n' + 1 ∧ ∀ e, CountQ (k e) n'
 
 /-- `n` uniform elements. -/
 noncomputable def iidE (n : ℕ) : ProbComp (List E) := (List.range n).mapM fun _ ↦ eDist
@@ -51,6 +53,9 @@ theorem CountQ.bind {P : FProg A α} {a b : ℕ} (hP : CountQ P a) {f : α → F
   | ret x => simp only [CountQ] at hP; subst hP; simpa [FProg.bind] using hf x
   | step m k ih => exact fun c ↦ ih c (hP c)
   | q x k ih =>
+    obtain ⟨n', rfl, hk⟩ := hP
+    exact ⟨n' + b, by omega, fun y ↦ ih y (hk y)⟩
+  | r k ih =>
     obtain ⟨n', rfl, hk⟩ := hP
     exact ⟨n' + b, by omega, fun y ↦ ih y (hk y)⟩
 
@@ -95,5 +100,15 @@ theorem stream (P : FProg A α) : ∀ (n : ℕ), CountQ P n → ∀ s : Edges ×
     simp only [mkDist, bind_assoc, pure_bind]
     refine EvalDistEq.bind_right _ fun e ↦ ?_
     exact (EvalDistEq.bind_right _ fun w ↦ ih _ n' (hk _) _).trans (OracleComp.EvalDistEq.bind_bind_swap _ _ _)
+  | r k ih =>
+    intro n hn s
+    obtain ⟨n', rfl, hk⟩ := hn
+    have e1 : (interpI (FProg.r k)).run s = eDist >>= fun e ↦ (interpI (k e)).run s := by
+      show (rDraw >>= fun e ↦ interpI (k e)).run s = _
+      rw [StateT.run_bind, show (rDraw (A := A)).run s = (fun e ↦ (e, s)) <$> eDist from rfl, bind_map_left]
+    have e2 : ∀ e es, (interpS (FProg.r k) (e :: es)).run s = (interpS (k e) es).run s := fun _ _ ↦ rfl
+    rw [e1, iidE_succ]
+    simp only [bind_assoc, pure_bind, e2]
+    exact EvalDistEq.bind_right _ fun e ↦ ih e n' (hk e) s
 
 end PcsQuotient.EndToEnd

@@ -13,9 +13,9 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
   circuit, the copy sum forced by `Q`'s layout). Each change was reviewed adversarially (soundness, zero knowledge, the contract against the verifier, the
   prover's unsafe code and determinism) before it was merged. The provers' speedups
   ([`docs/PERF_PROVER.md`](docs/PERF_PROVER.md)) change no proof.
-- **The Lean lags the Rust.** `formal/` proves the protocols of commit `f96a7938` (membership: six claims on four
-  commitments; π2 over π1-rec3, its three claims encoded by the contract). What the port needs:
-  [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until then, do not regenerate the Lean-facing files (below).
+- **The Lean**: `formal/` proves the deployed membership protocol; the leanVM line still states the protocols of
+  commit `f96a7938` (π2 over π1-rec3, its three claims encoded by the contract). What its port needs:
+  [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until then, do not regenerate the leanVM line's Lean-facing files (below).
 
 ## What the implementation adds to the design note
 
@@ -31,8 +31,9 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
 - **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: the
   out-of-domain answer gives it.
-- **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
-  ZK-WHIR. The membership protocol makes its own public scalars simulatable: random rows of free cells and a blinding
+- **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not
+  zero knowledge (Merkle roots and opened leaves in the clear), so the zero-knowledge theorem is about the protocol
+  over a zero-knowledge PCS, not about the deployed openings. The membership protocol makes its own public scalars simulatable: random rows of free cells and a blinding
   of `h` make the out-of-domain answers and the `a_j` uniform, both groups affine
   ([`docs/membership/PROTOCOL.md`](docs/membership/PROTOCOL.md), "Zero knowledge": rank tests).
 
@@ -105,9 +106,9 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 | Prover | **1.01 s** (reduction 0.66 s, openings 0.34 s), 6.0 GiB | **2.29 s** trace → π1-rec4 → π2 and openings (π1-rec4 0.86 s, its openings 0.18 s, π2 0.74 s, π2's four openings 0.51 s), 15.6 GB |
 | The EIP's prover column (+ 0.1 s a claim) | 1.3 s | 3.0 s |
 | Calldata | 273 B | **577 B** (4 zero) |
-| Gas without the frame | 15,753 execution; the PIOP's frame alone 20,097 (its standard binding) | 31,212 execution; standard 40,396 (the EIP's PIOP column), floor 36,928 |
+| Gas without the frame | 15,753 execution; the PIOP's frame alone 20,085 (its standard binding) | 31,212 execution; standard 40,396 (the EIP's PIOP column), floor 36,928 |
 | Claims | 3 | 7 (π1's 3, π2's 4) |
-| With the frame (1 + 32 B a claim) and the PCS gas | **31,680** (97 B, 8,000; floor-bound: 64 · (273 + 97) + 8,000; standard 29,649) | **63,328** (225 B, `pcs_gas` 12,000 on both sides; the floor binds, standard 55,996) |
+| With the frame (1 + 32 B a claim) and the PCS gas | **31,680** (97 B, 8,000; floor-bound: 64 · (273 + 97) + 8,000; standard 29,625) | **63,328** (225 B, `pcs_gas` 12,000 on both sides; the floor binds, standard 55,996) |
 | Deployment | 4,866 B of code, 1,149,640 gas | one contract, 14.3 KB |
 
 - Membership verifier: reduction < 1 ms, openings 6 ms (278 / 276 / 336 KiB: the witness's, the circuit's and `T`'s;
@@ -125,15 +126,24 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 ## What is proved and tested
 
-- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only; of `f96a7938`'s protocols;
-  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses): membership's knowledge soundness
-  (about 2^-61.4 at 2^64 queries) and completeness with no hypotheses, its zero knowledge under `PcsZeroKnowledge` and
-  `RevealedUniform`, its contract = its verifier; the Keccak VM's statement, the Keccak-f block, π1's knowledge
+- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only;
+  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses): of the deployed membership protocol,
+  knowledge soundness with no hypothesis (`Soundness.knowledgeSoundness`: about 2^-62.4 at 2^64 queries, 126.4 bits as
+  Q/ε, the three PCS openings' WHIR soundness proved under mumbai's, the pole condition proved of the circuit),
+  completeness under one evaluated check (`WiringCheck`, the wiring's coefficient `n − 2` nonzero; δ < 2^-163), zero
+  knowledge **of the protocol over any zero-knowledge PCS** (`zeroKnowledge_pcs_slack`, for every PCS `pcs` with
+  `PcsZeroKnowledge pcs sim εpcs`, the EIP's ZK-WHIR assumption; within `εpcs Q + ε1 + εslack + εfs₀`, `εslack ≤ 2^-126`
+  and `εfs₀ ≤ 2^-163` proved) under `Group1Uniform ε1` (stated, not proved: the random rows' map to `W`'s answer and
+  the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through the slack words), the
+  PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`); the
+  deployed openings (plain WHIR) are not zero knowledge and not an instance; its contract = its verifier; of
+  `f96a7938`'s leanVM line, the Keccak VM's statement, the Keccak-f block, π1's knowledge
   soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec3's
   recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
   two premises at Keccak-f[1600]. The compiled π2 circuit's checks are evaluated in Lean, not proved.
-- **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
-  ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
+- **Argued and tested (current code)**: the membership protocol's zero knowledge
+  ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); the rank tests in `hiding`); the Lean Statement against the Rust
+  (`membership-differential`: reductions, whole proofs, circuits' commitments, the prover's stream); each contract equals
   its Rust verifier; the real π1 proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame
   declaring exactly the claims their openings prove; π2's proof of the real 128-signature π1-rec4 proof is accepted,
   its openings verify, and every calldata byte but the frame's index flipped at bits 0 and 7 and the frame's attacks
@@ -149,7 +159,7 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 - **WHIR's parameters.** The code's proximity-gap accounting omits a factor `2^(ℓ-1)` that leanerVM's theorems carry;
   leanerVM's certified parameters account for it.
 - **Hiding.** The reference openings (leanVM's WHIR) are not zero knowledge: the membership proof's zero knowledge
-  assumes the EIP's ZK-WHIR.
+  is proved for the protocol over a zero-knowledge PCS (the EIP's ZK-WHIR), not for the deployed openings.
 - **Integrating the membership contract**: deploy with no owner; a proof carries no application context; never
   `DELEGATECALL` it ([`PROTOCOL.md`](docs/membership/PROTOCOL.md), "Integration").
 - **The prover's low-memory paths** make the dense prover's commitments and proofs (differential tests in
@@ -158,10 +168,10 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 ## Remaining
 
-- The Lean port to the deployed protocols ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
-- Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
-  simulation-extractability; `RevealedUniform` proved rather than tested (in the current protocol it reduces to two
-  rank conditions).
+- The leanVM line's Lean port to the deployed recursion ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
+- Membership: `Group1Uniform` proved (the random rows' rank 12 off a determinant's zero set); `WiringCheck` by a
+  kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
+  simulation-extractability.
 - leanVM in Lean: the model gap (π2's circuit computes π1's Fiat–Shamir at the real Keccak-f[1600], π1's theorems are
   in the random-permutation model); the compiler's IV uniformity (`RecCompose.PatchChecked`); closed bounds at other
   shapes than the reference ([`formal/README.md`](formal/README.md), "Remaining").
@@ -227,8 +237,8 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `examples/statement_vectors.rs`, `crates/leanvm/statement/tests/{lean_keccak_tables,lean_keccak_block}.rs`,
   `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
   lean_pad_counts,lean_pi2_prover,lean_graph_keccak,lean_statement_keccak}.rs`. A change of their output must go
-  with the Lean side; until the port ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), do not regenerate them: `formal/`
-  holds `f96a7938`'s.
+  with the Lean side. The membership line's are current; the leanVM line's, until its port
+  ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), must not be regenerated: `formal/` holds `f96a7938`'s.
 
 ## Lean builds
 

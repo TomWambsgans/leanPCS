@@ -9,9 +9,9 @@ import VCVio.OracleComp.RunIO
 the vectors `crates/membership/quotient/examples/statement_vectors.rs` writes, each with the Rust verifier's
 outcome, and a count of the agreements. Exit code `1` on any disagreement or unreadable line.
 
-* `R` lines: the reduction alone; the Rust's four commitments and six claims must be the Lean's, or both
+* `R` lines: the reduction alone; the Rust's two commitments and three claims must be the Lean's, or both
   reject.
-* `P` lines: a whole proof, its six openings in their raw form; both verifiers accept, or both reject.
+* `P` lines: a whole proof, its three openings in their raw form; both verifiers accept, or both reject.
 * `I` lines: a circuit's size, inputs and commitment (root, out-of-domain answer), which the Lean builder and
   commitment must reproduce.
 * `Q` lines: the honest prover's inputs and randomness, and the reduction's stream it sends, which the Lean
@@ -100,7 +100,7 @@ def lineHead : Parse (ℕ × Commitment × Statement × List E) := do
   pure (logRows, index, ⟨y, root⟩, stream)
 
 /-- The small circuit of the vectors (`small`, `statement_vectors.rs`): `256` inputs, XORs and χs
-folding them, the inputs as both public values; `2^13` rows. -/
+folding them, the inputs as both public values; `2^17` rows. -/
 def smallBuilder : BuildM (List Src × List Src) := do
   let x ← (List.range 256).mapM fun _ ↦ Build.input
   let mut acc := x.getD 0 .zero
@@ -118,8 +118,8 @@ def toyBuilder : BuildM (List Src × List Src) := do
 
 /-- The circuits the vectors name. -/
 def circuitNamed : String → Option Circuit
-  | "small" => let ((y, r), b) := smallBuilder.run Builder.new; some (finish 17 (publicWords y r) b)
-  | "toy" => let ((y, r), b) := toyBuilder.run Builder.new; some (finish 17 (publicWords y r) b)
+  | "small" => let ((y, r), b) := smallBuilder.run Builder.new; some (finish 17 (publicWordWires y r) b)
+  | "toy" => let ((y, r), b) := toyBuilder.run Builder.new; some (finish 17 (publicWordWires y r) b)
   | "membership" => some (membership 22)
   | _ => none
 
@@ -138,16 +138,11 @@ def checkLine (line : String) : Except String (String × Bool) := do
         | "REJECT" => pure none
         | "ACCEPT" =>
           let w ← commitment
-          let h ← commitment
-          let q ← commitment
-          let g ← commitment
+          let t ← commitment
           let c1 ← claim
           let c2 ← claim
           let c3 ← claim
-          let c4 ← claim
-          let c5 ← claim
-          let c6 ← claim
-          pure (some ((⟨w, h, q, g⟩ : Commitments), (⟨c1, c2, c3, c4, c5, c6⟩ : Claims)))
+          pure (some ((⟨w, t⟩ : Commitments), (⟨c1, c2, c3⟩ : Claims)))
         | t => throw s!"unknown verdict {t}" : Parse _).run rest
     let agree := match lean, rust with
       | none, none => true
@@ -157,11 +152,11 @@ def checkLine (line : String) : Except String (String × Bool) := do
   | "P" =>
     let ((logRows, index, stmt, stream), rest) ← lineHead.run rest
     let ((os, verdict), _) ← (do
-        let os ← (List.range 6).mapM fun _ ↦ openingProof
+        let os ← (List.range 3).mapM fun _ ↦ openingProof
         let v ← token
         pure (os, v) : Parse _).run rest
     let lean := match ReductionProof.ofStream stream, os with
-      | some p, [oW, oσ, oH, oQ, oG, oS] => verify logRows index stmt ⟨p, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+      | some p, [oW, oσ, oT] => verify logRows index stmt ⟨p, ⟨oW, oσ, oT⟩⟩
       | _, _ => false
     pure ("P", lean == (verdict == "ACCEPT"))
   | "I" =>
@@ -186,8 +181,8 @@ def checkLine (line : String) : Except String (String × Bool) := do
         let bits := (List.range count).map fun i ↦ (bytes.getD (i / 8) 0).testBit (i % 8)
         let words ← many kWord
         let word (k : ℕ) : K := words.getD k 0
-        let coins : Coins := ⟨fun j i ↦ word (3 * j.val + i.val), fun r ↦ word (12 + r.val),
-          fun e i ↦ word (12 + randomRows + hBlind * e.val + i.val)⟩
+        let coins : Coins := ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val),
+          fun k ↦ word (randomWords + 3 * freeBlind + k.val)⟩
         let stream ← many eElem
         pure (name, bits, coins, stream) : Parse _).run rest
     match circuitNamed name with
@@ -217,7 +212,7 @@ namespace PcsQuotientTest
 /-- The small circuit of the vectors. -/
 def smallCircuit : Circuit :=
   let ((y, r), b) := smallBuilder.run Builder.new
-  finish 17 (publicWords y r) b
+  finish 17 (publicWordWires y r) b
 
 /-- Keccak-f[1600], each call recorded as a forward query of the permutation with its answer. -/
 abbrev LogM := StateM (Array (Common.PermutationQuery LeanVM.Semantics.KeccakState ×
@@ -241,18 +236,15 @@ def inversionTest : Bool :=
     tree.root 3 64
   (List.range 8).all fun p ↦ decide (leaves.getD p [] = word p)
 
-/-- **The extractor's decoding of an honest witness table**: the small circuit's witness table (its cells'
-coefficients, then the masks), its WHIR word, the fast path's candidate, and the input bits read back through
-the cells' values: they are the inputs. -/
-def extractionTest (bits : List Bool) (masks : Masks) : Bool :=
+/-- **The extractor's decoding of an honest witness table**: the small circuit's witness table (its cells, the
+random rows filled, in the novel basis), its WHIR word, the fast path's candidate, and the input bits read back
+through the cells' values: they are the inputs. -/
+def extractionTest (bits : List Bool) (coins : Coins) : Bool :=
   let c := smallCircuit
   let mv := cellVars c.logRows
-  let wHat := Domain.coefficients mv 0 (c.cells bits)
-  let mask := maskEntries masks
-  let table : Array K := Array.ofFn (n := 2 * 2 ^ mv) fun i ↦
-    if i.val < 2 ^ mv then wHat.getD i.val 0 else mask.getD (i.val - 2 ^ mv) 0
-  let word := LeanVM.Prover.stackWordFast (mv + 1) logInvRate table
-  match LeanVM.Extraction.fastStacks (mv + 1) logInvRate word with
+  let table := witnessTable c (c.cells bits) coins
+  let word := LeanVM.Prover.stackWordFast mv logInvRate table
+  match LeanVM.Extraction.fastStacks mv logInvRate word with
   | stack :: _ => inputBitsOfStack c stack == bits
   | [] => false
 
@@ -268,8 +260,10 @@ def main (args : List String) : IO UInt32 := do
     let inverted := inversionTest
     IO.println s!"extractor (Merkle inversion through a transcript): {inverted}"
     let bits := bitsFrom 7 256
-    let masks : Masks := fun j i ↦ K.ofLane (UInt64.ofNat (1000003 * (3 * j.val + i.val) + 17))
-    let extracted := extractionTest bits masks
+    let coins : Coins := ⟨fun r ↦ K.ofLane (UInt64.ofNat (1000003 * r.val + 17)),
+      fun e i ↦ K.ofLane (UInt64.ofNat (1000033 * (2 * e.val + i.val) + 5)),
+      fun k ↦ K.ofLane (UInt64.ofNat (1000037 * k.val + 3))⟩
+    let extracted := extractionTest bits coins
     IO.println s!"extractor (fast path on an honest commitment): {extracted}"
     return if inverted && extracted then 0 else 1
   let path := args.headD "vectors.txt"

@@ -14,30 +14,33 @@ public import PcsQuotient.LayoutsProver
 
 The prover `Completeness` names (`Security.lean`), an executable program over a permutation `F` in any
 monad, Keccak-256 the sponge over `F`: `proveWith F fuel circuit stmt cells coins`, the Rust's `prove` then
-`open` (`protocol.rs`) step by step, with its randomness (`Coins`: `Randomness`) given.
+`open` (`protocol.rs`), with its randomness (`Coins`: `Randomness`) given.
 
-1. **The random rows**: the `X` and `V` cells of each random row take its random value.
-2. **The witness table** `W` (`m + 1` variables): the cells' polynomial in the novel basis
-   (`Domain.coefficients`), then its masks, sixteen entries (entry `4i + j` the coefficient `i` of row
-   polynomial `j`); committed (root, out-of-domain answer), sent; `α, β, γ` drawn.
-3. **The sum's polynomial** `h`: at cell `i`, `1/(α + w_i + β B(i)) + 1/(α + w_i + β B(σ(i)))`, plus
-   the public weight times the cell on the public region; in the novel basis; its limbs blinded by
-   `X_{2^m}·b` (coefficients `2^m … 2^m + 7`).
-4. **The quotients** on the coset `β_{m+2} + span(β₀ … β_{m+1})`, four times the cells: the copy
-   identity's quotient `q = ((h + public)·d·d' + d + d')/Z_cells` and the gate's
-   `(V + X + C + Y·C)/Z_rows`, back to the novel basis; the quotient table's three parts `H` (`h`'s limbs
-   with their blinding), `Q` (`q`'s limbs), `G` (the gate's quotient's first `2^(m+1)` coefficients),
-   each committed and sent; `t` drawn.
-5. **The values**: the four row polynomials (with their masks) and the wiring polynomial at `t`; `ρ`
-   drawn; then `Q`'s and `G`'s values at the points the verifier's reduction computes.
-6. **The openings** (`proveClaimWith`): leanVM's WHIR prover (`pcsOpeningScript`) on each claim's table,
-   run against the verifier's own program (mumbai's `runFrom`: the challenges squeezed from the sponge, each
-   proof of work the first passing nonce below `fuel`).
+1. **The random rows**: the `k`-th random row (`Circuit.randomRows`) takes the cells of its shape for the words
+   `2k`, `2k + 1` (`RandomShape.cells`, `Circuit::randomize`).
+2. **The witness table** `W` (`m` variables): the cells' polynomial `w` in the novel basis
+   (`Domain.coefficients`); committed (root, out-of-domain answer), sent; `α, β, μ` drawn.
+3. **The sum's polynomial** `h`: at cell `i`, `1/(α + w_i + β B(i)) + 1/(α + w_i + β B(σ(i)))`, in the novel
+   basis (`h_low`, degree `< n`), blinded by `Z (b_0 + b_1 X_1 + b_2 X_2)`.
+4. **The quotient** `q = (h d d' + d + d') / Z + μ g`, `g = gate / Z_R + (w + v) / Z_P`, first with `b_2 = 0`
+   (`q_0`), on the coset `β_{m+2} + span(β_0 … β_{m+1})` of `4 n` points, where it is exact; then
+   `b_2 = q_0[n] / (E[n] + E[2n])`, `E = w_1 d d'` (made on the same coset), so that `q = q_0 + b_2 E` has
+   `Q_h(0) = q[n] + q[2n] = 0`, `q = q_low + Z Q_h` (`PROTOCOL.md`, "The honest prover"). The Rust makes the same
+   coefficients on a coset of `2 n` points with the corrections `E`'s coefficient `2 n` needs; here the coset is
+   large enough for `E` itself.
+5. **The quotient table** `T` (`m + 4` variables, `table_slot`): kind `0`, limb `e < 3`, the first `n`
+   coefficients `A_0` of `q` (low half) and `A_1 = Q_h / x` (`divX`, high half); kind `1`, `B_0 = x h_low`
+   (`mulX`, low half) and `B_1 = (b_0, b_1, b_2)` (high half); limb `3` zero but for the four slack words, each
+   `(s, s, 0, s)` across limbs 0 to 3 of a coefficient of `A_0`, which reads zero. Committed and sent; `t` drawn.
+6. **The values**: the three values the gate reads at `t` (`rowValues` of the row polynomials at `t`) and the
+   wiring polynomial at `t`; `ρ` drawn.
+7. **The openings** (`proveClaimWith`): leanVM's WHIR prover (`pcsOpeningScript`) on each claim's table, run
+   against the verifier's own program (mumbai's `runFrom`: the challenges squeezed from the sponge, each proof of
+   work the first passing nonce below `fuel`).
 
 The prover branches on no permutation answer other than through the challenges, and its only search is the
-nonce search (mumbai's `runFrom`). It does not check that the gate's quotient fits `G` (the Rust's `fits`,
-true for a witness); the inverses are taken one by one (`x⁻¹`, `0⁻¹ = 0`) where the Rust batches them, which
-differs only at a challenge where a denominator vanishes.
+nonce search (mumbai's `runFrom`). The inverses are taken one by one (`x⁻¹`, `0⁻¹ = 0`) where the Rust batches
+them, which differs only at a challenge where a denominator vanishes.
 -/
 
 @[expose] public section
@@ -50,40 +53,60 @@ open PcsQuotient.Domain PcsQuotient.Transcript
 
 /-! ### The prover's randomness (`Randomness`, `protocol.rs`) -/
 
-/-- `H_BLIND` (`protocol.rs`): the coefficients past `2^m` that blind each limb of the sum's polynomial. -/
-def hBlind : ℕ := 8
+/-- `H_BLIND` (`protocol.rs`): the coefficients past `2^m` that blind each limb of the sum's polynomial,
+`b_0, b_1` drawn and `b_2` solved. -/
+def hBlind : ℕ := 3
 
-/-- The witness table's masks: three coefficients of `K` for each of the four row polynomials. -/
-abbrev Masks : Type := Fin 4 → Fin 3 → K
+/-- `FREE_BLIND` (`protocol.rs`): the blinding coefficients a proof draws per limb, `b_0, b_1`. -/
+def freeBlind : ℕ := hBlind - 1
 
-/-- **The prover's randomness** (`Randomness`, `protocol.rs`): the masks; the random rows' values, in the
-order of `Circuit.randomRows`; and the blinding of the sum's polynomial, `blind e i` coefficient `2^m + i`
-of limb `e`. The deployed prover derives them from a fresh 32-byte seed by a Keccak-256 KDF
+/-- `SLACK_WORDS` (`protocol.rs`): the quotient table's slack words, one for each coefficient `slackAt k` of `q`'s
+low half, written in that coefficient's limb 3 and added to its limbs 0 and 1: `(s, s, 0, s)` reads
+`s (1 + Y + Y³) = 0`, so no polynomial of the table and no claim moves, while the table's out-of-domain answer moves by
+`s` times a weight of the out-of-domain point alone (`PROTOCOL.md`, "Zero knowledge"). -/
+def slackWords : ℕ := 4
+
+/-- `SLACK_AT` (`protocol.rs`): the coefficients of `q`'s low half that hold a slack word, `0, 1, 2, 4`. -/
+def slackAt (k : ℕ) : ℕ := if k < 3 then k else 4
+
+/-- **The prover's randomness** (`Randomness`, `protocol.rs`): the random rows' words, two a row in the order of
+`Circuit.randomRows`; the blinding of the sum's polynomial, `blind e i` coefficient `2^m + i` of limb `e`, `i < 2`;
+and the quotient table's slack words. The deployed prover derives them from a fresh 32-byte seed by a Keccak-256 KDF
 (`Randomness::derive`); the statement's prover takes them uniform (`Security.lean`'s `sampleCoins`). -/
 structure Coins where
-  masks : Masks
-  rows : Fin randomRows → K
-  blind : Fin 3 → Fin hBlind → K
+  rows : Fin randomWords → K
+  blind : Fin 3 → Fin freeBlind → K
+  slack : Fin slackWords → K
 
-/-- The sixteen mask entries (`prove`, `protocol.rs`): entry `4i + j` is coefficient `i` of row
-polynomial `j`, `i < 3`; the last four are zero. -/
-def maskEntries (masks : Masks) : Array K :=
-  Array.ofFn (n := 16) fun e ↦
-    if e.val / 4 < 3 then masks (Fin.ofNat 4 (e.val % 4)) (Fin.ofNat 3 (e.val / 4)) else 0
-
-/-- **The random rows filled** (`prove`, `protocol.rs`): the `X` and `V` cells of the `k`-th random row
-(`Circuit.randomRows`) take `rows k`. -/
-def randomizeCells (circuit : Circuit) (cells : Array K) (rows : Fin randomRows → K) : Array K :=
+/-- **The random rows filled** (`Circuit::randomize`, `circuit.rs`): the `k`-th random row
+(`Circuit.randomRows`) takes the cells of its shape (`RandomShape.of k`) for the words `2k`, `2k + 1`. -/
+def randomizeCells (circuit : Circuit) (cells : Array K) (rows : Fin randomWords → K) : Array K :=
   (circuit.randomRows.zipIdx).foldl (fun cs (r, k) ↦
-    let v := if h : k < randomRows then rows ⟨k, h⟩ else 0
-    (cs.setIfInBounds (4 * r) v).setIfInBounds (4 * r + 3) v) cells
+    let word (j : ℕ) : K := if h : j < randomWords then rows ⟨j, h⟩ else 0
+    let (x, y, c, v) := (RandomShape.of k).cells (word (2 * k)) (word (2 * k + 1))
+    (((cs.setIfInBounds (4 * r) x).setIfInBounds (4 * r + 1) y).setIfInBounds (4 * r + 2) c).setIfInBounds
+      (4 * r + 3) v) cells
 
-/-- `public_weight` (`protocol.rs`): the weight of cell `i` of the public region, `γ^J` times its
-bit's weight, `J = ⌊i / 2^8⌋` the word, or zero off the `X` and `Y` cells. -/
-def publicCellWeight (i : ℕ) (γ : E) : E :=
-  if i &&& 2 ≠ 0 then 0
-  else bitWeight ((i &&& 1) ||| (((i >>> 2) &&& 63) <<< 1)) * γ ^ (i >>> 8)
+/-! ### Products and quotients by `x` in the novel basis (`mul_x`, `div_x`, `protocol.rs`) -/
 
+/-- `low(j)`, the lowest power of two in `j > 0` (`0` at `0`). -/
+def lowBit (j : ℕ) : ℕ := j &&& (2 ^ 64 - j) % 2 ^ 64
+
+/-- **`mul_x`** (`protocol.rs`): `x F` in the novel basis, `F` of `2^k` coefficients: the product's first `2^k`
+coefficients (coefficient `0` zero, coefficient `j ≥ 1` `f[j − 1] + f[j + low(j) − 1]`; its coefficient `2^k`,
+`F`'s top one, dropped). -/
+def mulX {M : Type} [Add M] [Zero M] [Inhabited M] (f : Array M) : Array M :=
+  Array.ofFn (n := f.size) fun j ↦
+    if j.val = 0 then 0 else f.getD (j.val - 1) 0 + f.getD (j.val + lowBit j.val - 1) 0
+
+/-- **`div_x`** (`protocol.rs`): `F` with `G = x F + G(0)` in the novel basis, `G` of `2^k` coefficients:
+`f[2^k − 1] = 0` and `f[i] = g[i + 1] + f[i + low(i + 1)]` (`0` past the end), made from the top down. -/
+def divX {M : Type} [Add M] [Zero M] [Inhabited M] (g : Array M) : Array M :=
+  let len := g.size
+  (List.range len).foldr
+    (fun i (f : Array M) ↦
+      if i + 1 < len then f.set! i (g.getD (i + 1) 0 + f.getD (i + lowBit (i + 1)) 0) else f)
+    (Array.replicate len 0)
 /-! ### The PCS opening -/
 
 /-- **The weight table of an opening** in WHIR's variable order (`open_words`, `pcs_claim`): entry `i` is the
@@ -111,113 +134,106 @@ def pcsOpeningScript (n : ℕ) (table : Array K) (z : List E) (c : Commitment) (
     let quad ← roundA target W₀ f₀
     levelsA n 0 config ⟨quad, [], []⟩ W₀ f₀
 
-/-- `w_k(t)` for `k ≤ count`. -/
-def digitsOf (t : E) (count : ℕ) : List E :=
-  (List.range count).foldl (fun ws _ ↦ ws ++ [ws.getLastD t * ws.getLastD t + ws.getLastD t]) [t]
-
 /-! ### The prover's tables, as functions of the witness, the randomness and the challenges -/
 
-/-- **The cells with the random rows filled**, the witness table's coefficients and its masks. -/
-def witnessParts (circuit : Circuit) (cells₀ : Array K) (coins : Coins) : Array K × Array K × Array K :=
-  let mv := cellVars circuit.logRows
+/-- **The cells with the random rows filled**, and the witness table: their coefficients in the novel basis
+(`m` variables). -/
+def witnessParts (circuit : Circuit) (cells₀ : Array K) (coins : Coins) : Array K × Array K :=
   let cells := randomizeCells circuit cells₀ coins.rows
-  (cells, coefficients mv 0 cells, maskEntries coins.masks)
+  (cells, coefficients (cellVars circuit.logRows) 0 cells)
 
-/-- **The witness table** `W` (`m + 1` variables): the cells' coefficients, then the masks. -/
+/-- **The witness table** `W` (`m` variables): the cells' coefficients. -/
 def witnessTable (circuit : Circuit) (cells₀ : Array K) (coins : Coins) : Array K :=
-  let n := 2 ^ cellVars circuit.logRows
-  let (_, wHat, mask) := witnessParts circuit cells₀ coins
-  Array.ofFn (n := 2 * n) fun i ↦ if i.val < n then wHat.getD i.val 0 else mask.getD (i.val - n) 0
+  (witnessParts circuit cells₀ coins).2
 
-/-- **The quotient table's three parts** `H`, `Q`, `G` at the challenges `α, β, γ`. -/
-def quotientTables (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (α β γ : E) :
-    Array K × Array K × Array K :=
+/-- The blinding coefficient `b_i` of `h`, as an element of `E` (its three limbs), `i < 2`; zero past them. -/
+def blindAt (coins : Coins) (i : ℕ) : E :=
+  if hi : i < freeBlind then E.ofLimbs (coins.blind 0 ⟨i, hi⟩) (coins.blind 1 ⟨i, hi⟩) (coins.blind 2 ⟨i, hi⟩)
+  else 0
+
+/-- **The quotient's parts** at the challenges `α, β, μ`: `h_low` (`h`'s coefficients on the cells, `n`), the
+quotient `q` (`2 n + 1` coefficients) and `b_2`. -/
+def quotientParts (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) (α β μ : E) :
+    Array E × Array E × E :=
   let mv := cellVars circuit.logRows
   let n := 2 ^ mv
   let big := 4 * n
-  let block := 2 ^ region
+  let (cells, wHat) := witnessParts circuit cells₀ coins
   let sigmaHat := circuit.wiringTable
-  let (cells, wHat, mask) := witnessParts circuit cells₀ coins
-  -- 3. The sum's polynomial on the cells, then its coefficients and their blinding.
+  -- The sum's polynomial on the cells, then its coefficients.
   let h : Array E := Array.ofFn (n := n) fun i ↦
     let common := α + ofK (cells.getD i.val 0)
-    (common + β * ofK (point i.val))⁻¹ + (common + β * ofK (point (circuit.sigma.getD i.val 0)))⁻¹ +
-      if i.val < block then publicCellWeight i.val γ * ofK (cells.getD i.val 0) else 0
+    (common + β * ofK (point i.val))⁻¹ + (common + β * ofK (point (circuit.sigma.getD i.val 0)))⁻¹
   let hHat := coefficients mv 0 h
-  let blindAt (i : ℕ) : E :=
-    if hi : i < hBlind then E.ofLimbs (coins.blind 0 ⟨i, hi⟩) (coins.blind 1 ⟨i, hi⟩) (coins.blind 2 ⟨i, hi⟩)
-    else 0
-  -- 4. Both quotients, on a coset four times the cells.
+  -- The quotient with `b_2 = 0`, and `E = w_1 d d'`, on the coset of `4 n` points.
   let offset := betaAt (mv + 2)
-  let offsets := chain offset (mv + 1)
-  let wValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
-    if i.val < n then wHat.getD i.val 0 else mask.getD (i.val - n) 0)
-  let sigmaValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
-    sigmaHat.getD i.val 0)
-  let q₀ : Array E := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
-    if i.val < n then hHat.getD i.val 0 else blindAt (i.val - n))
-  let b := coordinates region
+  let wValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦ wHat.getD i.val 0)
+  let sigmaValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦ sigmaHat.getD i.val 0)
+  let hValues : Array E := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
+    if i.val < n then hHat.getD i.val 0 else blindAt coins (i.val - n))
   let tau := rowVanishing mv
   let rowPoly (x : K) : K := ((chain x (mv - 1)).zip tau).foldl (fun acc (w, t) ↦ acc + t * w) 0
-  let gammas : List E := [γ, γ * γ, (γ * γ) * (γ * γ)]
-  -- Per block of `2^11` coset points: the public weights, `1/Z_cells`, and `1/Z_rows` by role.
-  let blocks : Array (Array E × K × Array K) := Array.ofFn (n := big / block) fun hi ↦
-    let base := hi.val * block
-    let wAt (k : ℕ) : K := offsets.getD k 0 + point (base >>> k)
-    let indicator := (List.range' region (mv - region)).foldl (fun acc k ↦ acc * (1 + wAt k)) 1
-    let weights : Array E :=
-      if indicator = 0 then #[ofK indicator]
-      else (List.range region).foldl
-        (fun ws k ↦
-          let shift := (List.range' k (region - k)).foldl
-            (fun acc j ↦ acc + b.getD (j - k) 0 * wAt j) 0
-          let slope : E := 1 + (coordinateWeight k).getD (gammas.getD (k - 8) 0)
-          let low := 1 + slope * ofK shift
-          ws.map (· * low) ++ ws.map (· * (low + slope)))
-        #[ofK indicator]
-    let rowBase := rowPoly (offset + point base)
-    (weights, (wAt mv)⁻¹, Array.ofFn (n := 4) fun r ↦ (rowBase + rowPoly (point r.val))⁻¹)
-  let qValues : Array E := Array.ofFn (n := big) fun i ↦
-    let (weights, cellVanishing, _) := blocks.getD (i.val / block) (#[], 0, #[])
-    let w := wValues.getD i.val 0
-    let common := α + ofK w
-    let d := common + β * ofK (offset + point i.val)
-    let dNext := common + β * ofK (sigmaValues.getD i.val 0)
-    let pub := if i.val % block < weights.size then weights.getD (i.val % block) 0 * ofK w else 0
-    ((q₀.getD i.val 0 + pub) * d * dNext + d + dNext) * ofK cellVanishing
-  let qGateValues : Array K := Array.ofFn (n := big) fun i ↦
-    let (_, _, rowInv) := blocks.getD (i.val / block) (#[], 0, #[])
-    let at_ (j : ℕ) : K := wValues.getD j 0
-    let (x, y, cc, v) := (at_ i.val, at_ (i.val ^^^ 1), at_ (i.val ^^^ 2), at_ (i.val ^^^ 3))
-    (v + x + cc + y * cc) * rowInv.getD (i.val % 4) 0
-  let qHat := coefficients (mv + 2) offset qValues
-  let qGateHat := coefficients (mv + 2) offset qGateValues
-  -- The quotient table's three parts: `H` (`h`'s limbs, each `2^m` coefficients then its blinding), `Q` (`q`'s
-  -- limbs, `4·2^m` coefficients each), `G` (the gate's quotient's first `2^(m+1)` coefficients).
-  let hTable : Array K := Array.ofFn (n := 8 * n) fun i ↦
-    let (e, j) := (i.val / (2 * n), i.val % (2 * n))
-    if 3 ≤ e then 0
-    else if j < n then limbOf (hHat.getD j 0) e
-    else if hj : j - n < hBlind ∧ e < 3 then coins.blind ⟨e, hj.2⟩ ⟨j - n, hj.1⟩
+  let pubWords := stmt.words
+  -- `Z_P(x)` and the pins' interpolant `v(x) = Σ_k v_k λ_k Π_(j ≠ k) (x + p_j)`, over `K`.
+  let zPins (x : K) : K := pinPoints.foldl (fun acc p ↦ acc * (x + p)) 1
+  let pinPoly (x : K) : K := (List.range publicRows).foldl
+    (fun acc k ↦ acc + pinWeights.getD k 0 * anchorValues pubWords k *
+      (List.range publicRows).foldl (fun pr j ↦ if j = k then pr else pr * (x + pinPoints.getD j 0)) 1) 0
+  let at_ (i : ℕ) : K := wValues.getD i 0
+  let parts : Array (E × E) := Array.ofFn (n := big) fun i ↦
+    let x := offset + point i.val
+    let w := at_ i.val
+    let d := α + ofK w + β * ofK x
+    let dNext := α + ofK w + β * ofK (sigmaValues.getD i.val 0)
+    let z := (chain x (mv + 1)).getD mv 0
+    let gate := at_ (i.val ^^^ 3) + at_ (i.val ^^^ 1) + at_ (i.val ^^^ 2) + w * at_ (i.val ^^^ 2)
+    let g := ofK (gate * (rowPoly x)⁻¹ + (w + pinPoly x) * (zPins x)⁻¹)
+    ((hValues.getD i.val 0 * d * dNext + d + dNext) * ofK z⁻¹ + μ * g, ofK (x * x + x) * d * dNext)
+  let q0Hat := coefficients (mv + 2) offset (parts.map (·.1))
+  let eHat := coefficients (mv + 2) offset (parts.map (·.2))
+  let b2 := q0Hat.getD n 0 * (eHat.getD n 0 + eHat.getD (2 * n) 0)⁻¹
+  let qHat : Array E := Array.ofFn (n := 2 * n + 1) fun j ↦ q0Hat.getD j.val 0 + b2 * eHat.getD j.val 0
+  (hHat, qHat, b2)
+
+/-- **The quotient table** `T` (`m + 4` variables, `table_slot`) at the challenges `α, β, μ`: word
+`i + n (half + 2 limb + 8 kind)` is limb `limb < 3` of coefficient `i` of `A_0` (kind `0`, low half),
+`A_1 = Q_h / x` (kind `0`, high half), `B_0 = x h_low` (kind `1`, low half) or `B_1 = (b_0, b_1, b_2)` (kind `1`,
+high half); limb `3` zero. -/
+def quotientTable (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) (α β μ : E) :
+    Array K :=
+  let n := 2 ^ cellVars circuit.logRows
+  let (hHat, qHat, b2) := quotientParts circuit stmt cells₀ coins α β μ
+  -- `Q_h` (`q = q_low + Z Q_h`): `q[n + j]` at `j < n`, `q[2n] X_{2n} / Z = q[2n] (X_n + 1)`.
+  let qh : Array E := Array.ofFn (n := 2 * n) fun j ↦
+    if j.val = 0 then qHat.getD n 0 + qHat.getD (2 * n) 0
+    else if j.val < n then qHat.getD (n + j.val) 0
+    else if j.val = n then qHat.getD (2 * n) 0
     else 0
-  let qTable : Array K := Array.ofFn (n := 16 * n) fun i ↦
-    let (e, j) := (i.val / big, i.val % big)
-    if e < 3 then limbOf (qHat.getD j 0) e else 0
-  let gTable : Array K := Array.ofFn (n := 2 * n) fun i ↦ qGateHat.getD i.val 0
-  (hTable, qTable, gTable)
+  let a1 := divX qh
+  let b0 := mulX hHat
+  let b1 (i : ℕ) : E := if i < freeBlind then blindAt coins i else if i = freeBlind then b2 else 0
+  Array.ofFn (n := 16 * n) fun w ↦
+    let i := w.val % n
+    let half := w.val / n % 2
+    let limb := w.val / (2 * n) % 4
+    let kind := w.val / (8 * n)
+    let x : E :=
+      if kind = 0 then (if half = 0 then qHat.getD i 0 else a1.getD i 0)
+      else (if half = 0 then b0.getD i 0 else b1 i)
+    -- The slack word of coefficient `i` of `q`'s low half, if it holds one: `(s, s, 0, s)` in limbs 0 to 3.
+    let slack : K := (List.range slackWords).foldl
+      (fun acc k ↦ if kind = 0 ∧ half = 0 ∧ i = slackAt k then
+          (if h : k < slackWords then coins.slack ⟨k, h⟩ else 0) else acc) 0
+    if limb < 3 then limbOf x limb + (if limb < 2 then slack else 0) else slack
 
-/-- **The row values** `a_j` (the four row polynomials with their masks) and `next` (the wiring polynomial) at
-`t`. -/
-def rowValues (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (t : E) : Vector E 4 × E :=
+/-- **The values the prover sends at `t`**: the three values the gate reads (`row_values` of the row polynomials
+at `t`) and `next`, the wiring polynomial at `t`. -/
+def valuesAt (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (t : E) : Vector E 3 × E :=
   let mv := cellVars circuit.logRows
-  let (_, wHat, mask) := witnessParts circuit cells₀ coins
-  let digits := digitsOf t mv
-  let a : Vector E 4 := Vector.ofFn fun j ↦
-    novelEval wHat j.val 4 ((digits.drop 2).take (mv - 2)) +
-      digits.getD mv 0 * novelEval mask j.val 4 ((digits.drop 2).take 2)
-  let next := novelEval circuit.wiringTable 0 1 (digits.take mv)
-  (a, next)
-
+  let wHat := witnessTable circuit cells₀ coins
+  let ws := digitsOf t mv
+  let a : Vector E 4 := Vector.ofFn fun j ↦ novelEval wHat j.val 4 ((ws.drop 2).take (mv - 2))
+  (rowValues a t (ws.getD 1 0), novelEval circuit.wiringTable 0 1 (ws.take mv))
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
@@ -250,7 +266,8 @@ def Transcript.Chain.absorbCommitment (c : Chain) (s : CommitmentScalars) : Chai
 /-- **The PCS operations the prover uses for its secret tables**: commit to a table of `2^μ` words (a handle
 for opening it later, and the commitment: root and out-of-domain answer), and open a claim on a committed
 table. The honest prover's are `realPcs` (WHIR, `commitmentWith`, `proveClaimWith`); the zero-knowledge
-theorem replaces them by an ideal PCS (`Security.lean`, `formal/EndToEnd/ZK`). -/
+theorem is stated for the protocol over any PCS (`Security.lean`'s `pcsExperiment`) and compares it with the
+protocol over an ideal PCS (`Zk.lean`, `formal/EndToEnd/ZK`). -/
 structure PcsOps (m : Type → Type) (Hd : Type) where
   commit : ℕ → Array K → m (Hd × Commitment)
   openClaim : Hd → Commitment → Claim → m (Option Compile.Proof)
@@ -263,7 +280,7 @@ def realPcs (fuel : ℕ) : PcsOps m (Tree × Array K) where
     return ((tree, table), c)
   openClaim h c claim := proveClaimWith F fuel h.1 h.2 c claim
 
-/-- **The honest prover with PCS operations `pcs`** for its four secret tables (`W`, `H`, `Q`, `G`) over `F`
+/-- **The honest prover with PCS operations `pcs`** for its two secret tables (`W`, `T`) over `F`
 (`prove_with_randomness` then `open`, `protocol.rs`): the proof of `stmt` from the cells of a witness of
 `circuit`, with the randomness `coins`; the circuit's commitment and the wiring claim's opening (public) are the
 real WHIR ones, `fuel` nonces per proof of work; `none` if a proof of work or an opening fails or the reduction
@@ -274,37 +291,25 @@ def proveWithPcs {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (circuit : Circuit
   -- The circuit's commitment, public.
   let sigmaHat := circuit.wiringTable
   let (indexTree, index) ← commitmentWith F mv sigmaHat
-  let wTable := witnessTable circuit cells₀ coins
-  let (wTree, wCom) ← pcs.commit (mv + 1) wTable
+  let (wTree, wCom) ← pcs.commit mv (witnessTable circuit cells₀ coins)
   let c ← Chain.startWith F (label index stmt)
   let wS := CommitmentScalars.of wCom
   let c := c.absorbCommitment wS
   let (α, c) ← c.squeezeWith F
   let (β, c) ← c.squeezeWith F
-  let (γ, c) ← c.squeezeWith F
-  let (hTable, qTable, gTable) := quotientTables circuit cells₀ coins α β γ
-  let (hTree, hCom) ← pcs.commit (mv + 3) hTable
-  let (qTree, qCom) ← pcs.commit (mv + 4) qTable
-  let (gTree, gCom) ← pcs.commit (mv + 1) gTable
-  let (hS, qS, gS) := (CommitmentScalars.of hCom, CommitmentScalars.of qCom, CommitmentScalars.of gCom)
-  let c := ((c.absorbCommitment hS).absorbCommitment qS).absorbCommitment gS
+  let (μ, c) ← c.squeezeWith F
+  let (tTree, tCom) ← pcs.commit (mv + 4) (quotientTable circuit stmt cells₀ coins α β μ)
+  let tS := CommitmentScalars.of tCom
+  let c := c.absorbCommitment tS
   let (t, _) ← c.squeezeWith F
-  -- The values at `t`, then `Q`'s and `G`'s values at their points (the verifier's, after `ρ`).
-  let (a, next) := rowValues circuit cells₀ coins t
-  let proof₀ : ReductionProof := ⟨wS, hS, qS, gS, a, next, 0, 0⟩
-  let some r₀ ← reduceWith F circuit.logRows index stmt proof₀ | return none
-  let proof : ReductionProof :=
-    { proof₀ with qValue := tableEval qTable r₀.claims.q.point,
-                  gValue := tableEval gTable r₀.claims.g.point }
-  -- 6. The claims, and their openings.
+  let (vals, next) := valuesAt circuit cells₀ coins t
+  let proof : ReductionProof := ⟨wS, tS, vals, next⟩
+  -- The claims, and their openings.
   let some r ← reduceWith F circuit.logRows index stmt proof | return none
   let some oW ← pcs.openClaim wTree r.commitments.witness r.claims.witness | return none
   let some oσ ← proveClaimWith F fuel indexTree sigmaHat index r.claims.wiring | return none
-  let some oH ← pcs.openClaim hTree r.commitments.h r.claims.h | return none
-  let some oQ ← pcs.openClaim qTree r.commitments.q r.claims.q | return none
-  let some oG ← pcs.openClaim gTree r.commitments.g r.claims.g | return none
-  let some oS ← pcs.openClaim hTree r.commitments.h r.claims.sum | return none
-  return some ⟨proof, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+  let some oT ← pcs.openClaim tTree r.commitments.table r.claims.copy | return none
+  return some ⟨proof, ⟨oW, oσ, oT⟩⟩
 
 /-- **The honest prover** over `F` (`prove_with_randomness` then `open`, `protocol.rs`): `proveWithPcs` with the
 real PCS. -/

@@ -1,22 +1,23 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The test vectors for `formal/WhirBridge`, in the form leanerVM mumbai's Lean verifier reads (the scalar stream,
-//! then one full Merkle path per query: the pruned batches expanded, as `Transcript::finish` returns them), of the
-//! EIP's PCS claims (`pcs_claim`, version 1: the IV `keccak256(PCS_claim)`, a zero public digest, the root as the
-//! stream's first two scalars, one opening of `f(z) = ood` and `f(point) = value`):
+//! The test vectors for `formal/WhirBridge/Test/CheckPcs.lean`, in the form leanerVM mumbai's Lean verifier reads (the
+//! scalar stream, then one full Merkle path per query: the pruned batches expanded, as `Transcript::finish` returns
+//! them), of the EIP's PCS claims (`pcs_claim`, version 1: the IV `keccak256(PCS_claim)`, a zero public digest, the
+//! root as the stream's first two scalars, one opening of `f(z) = ood` and `f(point) = value`):
 //!
 //! * `public`: an opening of a pseudo-random table of `2^15` words;
 //! * `witness`, `wiring`, `copy`: the three openings of a membership proof on a circuit of `2^17` rows, by
 //!   the real prover.
 //!
-//! Each vector carries its claim's bytes (`pcsclaim`), from which the Lean recomputes the IV and the out-of-domain
-//! point, and the paths `pcs_claim::verify_claim_paths` checks (`pcs_claim::lean::bridge_vector`). Regenerate and check, from the repository root:
+//! Each vector carries its claim's bytes and their Keccak-256 (`claimbytes`, `payload`), its fields and out-of-domain
+//! point, from which the Lean recomputes the IV and the point, and the paths `pcs_claim::verify_claim_paths` checks
+//! (`pcs_claim::lean::pcs_vector`). Regenerate and check, from the repository root:
 //!
 //!   cargo test -p quotient --release --test whir_bridge_vector -- --ignored
-//!   (cd formal/WhirBridge && lake env lean --run Test/Check.lean ../../target/whir_bridge_vector.txt)
+//!   (cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/whir_bridge_vector.txt)
 //!
 //! The first writes `target/whir_bridge_vector.txt` (or `$WHIR_BRIDGE_VECTOR`).
 
-use pcs_claim::lean::bridge_vector as vector;
+use pcs_claim::lean::pcs_vector as vector;
 use pcs_claim::{Codeword, commit, open as open_claim};
 use primitives::field::F64;
 use primitives::test_rng::Rng;

@@ -1,47 +1,26 @@
 # The Lean port
 
-`formal/` states and proves the protocols of commit `f96a7938`: membership with six claims on four commitments
-([`HISTORY.md`](HISTORY.md), "Membership at f96a7938"), and π2v3 over π1-rec3 with π1's three claims encoded by the
-contract. The deployed ones are [`membership/PROTOCOL.md`](membership/PROTOCOL.md) (three claims on two commitments
-and the circuit's) and [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md) (π2v4 over π1-rec4, π1's three claims hashed
-in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port needs; the intermediate protocols of `866ba889` were never ported.
+`formal/` states and proves the deployed **membership** protocol ([`membership/PROTOCOL.md`](membership/PROTOCOL.md):
+three claims on two commitments and the circuit's; [`../formal/README.md`](../formal/README.md), "Membership: the end
+theorems"). The **leanVM** line still states the protocols of commit `f96a7938`: π2v3 over π1-rec3 with π1's three
+claims encoded by the contract; the deployed one is [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md) (π2v4 over
+π1-rec4, π1's three claims hashed in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port still
+needs; the intermediate protocols of `866ba889` were never ported.
 
 ## Membership
 
-- **`formal/Statement/PcsQuotient.lean`**:
-  - `Circuit`, `Relation`: the gate `V = Y + C + X·C` (roles swapped from `f96a7938`'s `V = X + C + Y·C`); the public
-    values as eight `K`-words packed by Horner rows `(3, b, acc)`, the eleven anchors and the constant `3`; the free
-    cells of the three random-row shapes `(0, r, s, r + s)`, `(s, r, 0, r)`, `(1, r, s, r)`; no masks.
-  - `Domain`, `Reduction`, `Verifier`, `Transcript`: the stream (two roots, two answers, `X`, `C`, `V + Y`, `next`;
-    `μ` for `γ`, no part values); `T`'s layout (`table_slot`, digits read through `ζ = Z x`); the witness claim's
-    conic point and weights; the copy claim's digit coordinate `ζ / (1 + ζ)`, kind coordinate and value
-    `t R / (ζ + d d')`; the pins' interpolation and `Z_P`; the batched inversion's denominators; no sum claim.
-  - `Prover`, `LayoutsProver`: no masks; the blinding `b_0 + b_1 X_1 + b_2 X_2` with `b_2` solved; the one quotient
-    on `2n` points; `B_0 = x h_low`; the novel basis's `mul_x`, `mul_w1`, `div_x`.
-  - `Extractor`, `Replay`, `Opening`, `PcsOpening`: two commitments and three claims.
-  - `Security`, `Zk`: `RevealedUniform` over the new revealed scalars, now two rank conditions (ranks 12 and 3, both
-    groups affine), provable from a determinant's degree. At `f96a7938` it is not provable as is (a random row's value
-    enters the gate's quotient `GF(2)`-linearly).
-- **`formal/EndToEnd`**:
-  - `Soundness.knowledgeSoundness`, `ksBound`: three openings, two lists; `ComposePcs.prEvent_pinned_le` and
-    `trace_core4P` in two-root versions; `WhirBridge.Pcs.ood_binding_coords` at 24 and 28 variables.
-  - The new identity steps: the pins by interpolation inside `g`; `g` merged into `q` by the pole lemma and the
-    circuit's condition (`errors_have_their_own_poles`, met by the membership circuit by computation); the sum from
-    the layout (`I(0) = d d'(0) B_0(0)`, then the degree); the conic binding of the witness claim (a non-degenerate
-    conic spans its plane). The pole lemma is the one step that needs a property of the circuit beyond its being
-    wired and loop-free.
-  - `E2ECompleteness.completeness_end`: the honest prover, with `b_2`'s existence (given `σ_{n−2} ≠ 0`, met by
-    computation).
-  - `ZK`, `PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`: the simulator's revealed scalars and the hypotheses.
-- **`formal/QuotientSecurity`** (F1: `PublicWeight`, `Pinning`, `Tables`, `Degrees`, `LogDerivative`,
-  `ZeroKnowledge`, `Circuit`, `CircuitLayout`, `Concrete`): the swapped gate and the one table with `x h`; its
-  identities, degrees and the claims' comparison above `claims_iff_accepts_ofCantor` need redoing, as far as the end
-  theorems still use them ([`../formal/QuotientSecurity/README.md`](../formal/QuotientSecurity/README.md)).
-- **`formal/Implementation`**: `Graph.lean` regenerated (`UPDATE_LEAN=1 cargo test -p evm graph_lean_is_current`,
-  ignored until then); `Calldata` (273 bytes, no selector, statement words of 8 bytes, two roots, six scalars);
-  `Evm.evm_accepts_iff_verifyWith` against the new graph (three declared claims).
-- **`formal/Circuit`**: the dump format (`examples/dump_circuit.rs`: sources `0` zero, `1` one, `2` three, `3` free,
-  `4 + r` row) and `CircuitTest/Dump.lean`'s public words, with the swapped roles.
+Ported (`lean/membership`). What remains:
+
+- **`Group1Uniform ε1`** (zero knowledge's hypothesis besides the PCS's; `T`'s part is proved through the slack
+  words, `εslack ≤ 2^-126`): the random rows' `K`-linear map to `W`'s answer and `X`, `C`, `V + Y` of rank 12 but on a
+  small set of challenges ([`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge").
+- **The PCS's zero knowledge.** Zero knowledge is proved for the protocol over any PCS `pcs` with
+  `PcsZeroKnowledge pcs sim εpcs` (stated in the protocol's experiment: the protocol over `pcs` against its hybrid over
+  the ideal PCS), satisfiable (the model's ideal PCS, `εpcs = 0`). Not done: a stand-alone PCS zero-knowledge game
+  implying it, and a ZK-WHIR PCS proved to meet it; the deployed openings (plain WHIR) do not.
+- **`WiringCheck`** (completeness's evaluated hypothesis: the wiring's coefficient `n − 2` nonzero) by a kernel proof.
+- Deduplication between the soundness and completeness lines (`Soundness/PcsVH*.lean` copy
+  `E2ECompleteness.Pcs{WithHash,Duplex,Cost}`; `tableEval_eq_mle`, `tau_systemL`).
 
 ## leanVM
 
@@ -91,35 +70,21 @@ The bounds' arithmetic carries over but for one port.
 
 ## Lean-facing files
 
-The Rust at main writes the deployed protocols. Until the port, do not rerun these with `UPDATE_LEAN=1` or feed their
-output to the Lean: it would overwrite `f96a7938`'s data. The tests that compare them are ignored.
+The Rust at main writes the deployed protocols. The membership line's writers are current (their outputs are the
+Lean's inputs); for the leanVM line's, until its port, do not rerun these with `UPDATE_LEAN=1` or feed their output
+to the Lean: it would overwrite `f96a7938`'s data. The tests that compare them are ignored.
 
 | writer | Lean file | state |
 |---|---|---|
-| `crates/membership/evm/src/lean.rs` (`graph_lean_is_current`, ignored) | `formal/Implementation/Graph.lean` | `f96a7938`'s graph: 665 nodes, 50 output words, six claims |
-| `crates/membership/quotient/examples/statement_vectors.rs` | `formal/Statement`'s `differential` | writes 11-scalar streams and three claims; the Lean expects `f96a7938`'s nineteen-scalar streams and six claims (generate from a checkout of `f96a7938`) |
-| `crates/membership/quotient/tests/whir_bridge_vector.rs` | `formal/WhirBridge/Test/Check.lean` | see below |
-| `crates/membership/quotient/tests/whir_large_params.rs` (`large_public_openings`) | `formal/WhirBridge/Test/CheckLarge.lean` | see below |
 | `crates/leanvm/rec/tests/lean_statement_keccak.rs` (`keccak_statement_data_is_current`, ignored) | `formal/RecStatement/RecStatement/Data.lean` | `f96a7938`'s circuit |
 | `crates/leanvm/rec/tests/lean_{graph_keccak,circuit_keccak,pi2_prover}.rs` | `RecGraphKeccak`, `RecCircuit`, `RecCompose`'s `RecComposeTest` | π1-rec3's and `f96a7938`'s |
 
-**WhirBridge's vector checks disagree with their writers.** `whir_bridge_vector.rs` (`--ignored`) writes four vectors
-of the EIP's PCS claims (`public`, a `2^15`-word table; `witness`, `wiring`, `copy`, the three openings of a
-membership proof at `2^17` rows), each with `pcsclaim`, `root`, `claim`, `stream` and `open` lines, and
-`large_public_openings` writes PCS-claim openings. `Test/Check.lean` (which the Rust test's header still names) and
-`Test/CheckLarge.lean` read the version-2 layout vectors: three vectors, each with a `new` or `hidden` layout line and
-a `prefix` line, plus 18 `layoutprefix` lines; on the current file `Check.lean` stops at the first vector ("no
-layout") and finds 4 vectors where it expects 3. The PCS-claim check is `Test/CheckPcs.lean`, on
-`crates/pcs_claim/examples/lean_vector.rs`'s format (`n`, `claimbytes`, `payload`, `root`, `ood`, `point`, `value`,
-`oodpoint`, `stream`, `open`). The port either writes these vectors in `CheckPcs.lean`'s format, or retires
-`Check.lean` and `CheckLarge.lean` with the layout openings.
-
-**Lean comments** cite the design documents by their names at `f96a7938` (`HIDING.md`, `SPEC-FLOCK.md`,
+**Lean comments** of the leanVM line cite the design documents by their names at `f96a7938` (`SPEC-FLOCK.md`,
 `SPEC-POINTS.md`, `flock/KECCAK.md`); [`HISTORY.md`](HISTORY.md), "Old document names", maps them. Update them with
 the port.
 
-**Legacy layers still built** that no end theorem uses (candidates for removal at the port): WhirBridge's version-2
-layout openings (`ours_sound`, `ours_sound_public`, the `Large*` layout parts), `Compose`'s
-`knowledgeSoundness_deployed_rust` and its `Deployed*`, `Claims.lean`, `Completeness`'s `completeness_deployed_*`
-and `HiddenOpenings.lean`, `Statement`'s `Opening.lean` and `LayoutsProver.lean` (also used by the leanVM line's older
-PIOP layers).
+**Legacy layers still built** that no end theorem uses, kept because the leanVM line imports them: WhirBridge's
+version-2 layout openings (`ours_sound`, `ours_sound_public`, the `Large*` layout parts), `Compose`'s
+`knowledgeSoundness_deployed_rust` and its `Deployed*`, `Claims.lean`, the previous protocol's F1 and F0
+(`QuotientSecurity`, `formal/Circuit`), `ComposePcs`'s four-root chain, `Statement`'s `Opening.lean` and
+`LayoutsProver.lean`.

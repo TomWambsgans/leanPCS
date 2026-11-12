@@ -2,10 +2,10 @@
 -- Adapted from this repository's `formal/EndToEnd/Soundness/Final.lean` (at commit abe22812: `soundnessExperiment_eq`,
 -- `rpmGame_eq`, the experiments' coupling) to the EIP's PCS claims.
 import Soundness.PcsSetup
-import E2ECompleteness.PcsExperiment
-import E2ECompleteness.PcsDuplex
-import E2ECompleteness.PcsCost
-import E2ECompleteness.PcsHashLen
+import Soundness.PcsVHCost
+import Soundness.PcsVHDuplex
+import E2ECompleteness.HashLen
+import LeanVM.Protocol.ExperimentBridge
 
 /-!
 # The Statement's experiment is the transfer game's
@@ -13,7 +13,7 @@ import E2ECompleteness.PcsHashLen
 The Statement's knowledge-soundness experiment (`PcsQuotient.soundnessExperiment`) runs the setup (`setupWith`), the
 adversary on the setup's commitment and the verifier, all over `π`. Its setup and verifier are the two-call
 computations `setupWithH callKeccak256` and `verifyWithH callKeccak256 callKeccakF1600` answered over `π`
-(`E2ECompleteness/PcsWithHash.lean`), so it is a function of `PcsRpm.lean`'s game `rpmGameG` of those
+(`Soundness/PcsVH.lean`), so it is a function of `PcsRpm.lean`'s game `rpmGameG` of those
 (**`soundnessExperiment_eq`**), and it breaks only where the game's event `EvK` holds of the setup's log and the
 adversary's evaluations (**`prEvent_soundness_le`**): on the game's support the setup's log is its tree's evaluations
 then the out-of-domain point's `46`-byte entries (`setupLog`), and the Statement's extractor finds a secret where the
@@ -76,39 +76,39 @@ theorem log_support (P : List UInt8 → Prop) {α : Type} (X : OracleComp Keccak
 
 /-- The Statement's setup with Keccak-256 a call. -/
 noncomputable abbrev setupS : OracleComp KeccakCalls (LeanVM.Prover.Tree × PcsQuotient.Commitment) :=
-  E2ECompleteness.Pcs.setupWithH callKeccak256
+  VH.setupWithH callKeccak256
 
 theorem hashOK_ood (n : ℕ) (root : Digest) :
     E2ECompleteness.HashOK (fun x => x.length = 46)
-      (E2ECompleteness.Pcs.oodPointWithH callKeccak256 n root) := by
-  unfold E2ECompleteness.Pcs.oodPointWithH
-  refine E2ECompleteness.Pcs.HashOK.mapM _ (fun j ↦ ?_) _
+      (VH.oodPointWithH callKeccak256 n root) := by
+  unfold VH.oodPointWithH
+  refine E2ECompleteness.HashOK.mapM _ (fun j ↦ ?_) _
   exact E2ECompleteness.HashOK.bind
-    (E2ECompleteness.hashOK_callKeccak256 (E2ECompleteness.Pcs.length_oodInput _ _ _))
+    (E2ECompleteness.hashOK_callKeccak256 (VH.Cost.length_oodInput _ _ _))
     fun _ ↦ E2ECompleteness.HashOK.pure _ _
 
 /-- **The setup's log** is its tree's evaluations, then the out-of-domain point's `46`-byte inputs. -/
 theorem setupLog {s : (LeanVM.Prover.Tree × PcsQuotient.Commitment) × Transcript}
     (hs : s ∈ support (loggedKC setupS)) :
     ∃ L : Transcript, s.2 = Soundness.treeTr s.1.1 ++ L ∧ ∀ e ∈ L, e.1.length = 46 := by
-  unfold setupS E2ECompleteness.Pcs.setupWithH E2ECompleteness.Pcs.commitmentWithH at hs
+  unfold setupS VH.setupWithH VH.commitmentWithH at hs
   unfold loggedKC at hs
   rw [simulateQ_bind, StateT.run_bind, mem_support_bind_iff] at hs
   obtain ⟨tl, htl, hs⟩ := hs
-  have hb : (simulateQ logImplKC (E2ECompleteness.Pcs.commitWithH callKeccak256
+  have hb : (simulateQ logImplKC (VH.commitWithH callKeccak256
       (PcsQuotient.cellVars PcsQuotient.logRows)
       (PcsQuotient.membership PcsQuotient.logRows).wiringTable)).run [] =
-      (fun t => (t, Soundness.treeTr t)) <$> E2ECompleteness.Pcs.commitWithH callKeccak256
+      (fun t => (t, Soundness.treeTr t)) <$> VH.commitWithH callKeccak256
         (PcsQuotient.cellVars PcsQuotient.logRows) (PcsQuotient.membership PcsQuotient.logRows).wiringTable :=
     Soundness.loggedKC_buildTree _ _
   rw [hb, support_map] at htl
   obtain ⟨t, -, rfl⟩ := htl
-  have hm : (E2ECompleteness.Pcs.oodPointWithH callKeccak256 (PcsQuotient.cellVars PcsQuotient.logRows) t.root >>=
+  have hm : (VH.oodPointWithH callKeccak256 (PcsQuotient.cellVars PcsQuotient.logRows) t.root >>=
       fun z => (pure (t, (⟨t.root, PcsQuotient.tableEval (PcsQuotient.membership PcsQuotient.logRows).wiringTable z⟩ :
         PcsQuotient.Commitment)) : OracleComp KeccakCalls _)) =
       (fun z => (t, (⟨t.root, PcsQuotient.tableEval (PcsQuotient.membership PcsQuotient.logRows).wiringTable z⟩ :
         PcsQuotient.Commitment))) <$>
-        E2ECompleteness.Pcs.oodPointWithH callKeccak256 (PcsQuotient.cellVars PcsQuotient.logRows) t.root := by
+        VH.oodPointWithH callKeccak256 (PcsQuotient.cellVars PcsQuotient.logRows) t.root := by
     rw [map_eq_bind_pure_comp]
     rfl
   simp only at hs
@@ -119,6 +119,13 @@ theorem setupLog {s : (LeanVM.Prover.Tree × PcsQuotient.Commitment) × Transcri
 
 /-! ## The experiment -/
 
+theorem implH_kcqp :
+    LeanVM.Protocol.Compile.Rom.implH keccakCallsOverQueryPermutation =
+      keccak256With Common.queryPermutation := rfl
+
+theorem implF_kcqp :
+    LeanVM.Protocol.Compile.Rom.implF keccakCallsOverQueryPermutation = Common.queryPermutation := rfl
+
 /-- The adversary on the setup's output: given its commitment. -/
 def advS (A : PcsQuotient.Adversary) :
     LeanVM.Prover.Tree × PcsQuotient.Commitment →
@@ -128,7 +135,7 @@ def advS (A : PcsQuotient.Adversary) :
 /-- The Statement's verifier with the two calls, on the setup's commitment. -/
 def verV (s : LeanVM.Prover.Tree × PcsQuotient.Commitment) (a : PcsQuotient.Statement × PcsQuotient.Proof) :
     OracleComp KeccakCalls Bool :=
-  E2ECompleteness.Pcs.verifyWithH callKeccak256 callKeccakF1600 22 s.2 a.1 a.2
+  VH.verifyWithH callKeccak256 callKeccakF1600 22 s.2 a.1 a.2
 
 /-- The Statement's outcome of an outcome of the game. -/
 def outS (z : (((LeanVM.Prover.Tree × PcsQuotient.Commitment) × (PcsQuotient.Statement × PcsQuotient.Proof)) ×
@@ -137,17 +144,17 @@ def outS (z : (((LeanVM.Prover.Tree × PcsQuotient.Commitment) × (PcsQuotient.S
 
 theorem setupWith_qp : PcsQuotient.setupWith Common.queryPermutation =
     Prod.fst <$> simulateQ keccakCallsOverQueryPermutation (loggedKC setupS) := by
-  rw [E2ECompleteness.Pcs.setupWith_eqH, ← E2ECompleteness.Pcs.implH_keccakCallsOverQueryPermutation,
-    ← E2ECompleteness.Pcs.simulateQ_setupWithH, ← simulateQ_map, loggedKC, fst_loggedKC_run]
+  rw [VH.setupWith_eqH, ← implH_kcqp,
+    ← VH.simulateQ_setupWithH, ← simulateQ_map, loggedKC, fst_loggedKC_run]
 
 theorem verifier_qp (s : LeanVM.Prover.Tree × PcsQuotient.Commitment) (stmt : PcsQuotient.Statement)
     (proof : PcsQuotient.Proof) :
     PcsQuotient.verifier Common.queryPermutation s.2 stmt proof =
       simulateQ keccakCallsOverQueryPermutation (verV s (stmt, proof)) := by
-  rw [verV, E2ECompleteness.Pcs.simulateQ_verifyWithH,
-    E2ECompleteness.Pcs.implH_keccakCallsOverQueryPermutation,
-    E2ECompleteness.Pcs.implF_keccakCallsOverQueryPermutation, PcsQuotient.verifier,
-    E2ECompleteness.Pcs.verifyWith_eqH]
+  rw [verV, VH.simulateQ_verifyWithH,
+    implH_kcqp,
+    implF_kcqp, PcsQuotient.verifier,
+    VH.verifyWith_eqH]
   rfl
 
 /-- **The Statement's experiment is a function of the game.** -/
