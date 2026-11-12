@@ -30,7 +30,7 @@ At `f96a7938`, checking the claims declared cost 61 gas once (the frame's mode a
 
 ### Membership at f96a7938
 
-The protocol `formal/` proves (formerly `docs/membership/EIP_CLAIMS.md`): the first fit to the EIP's claims, one
+The protocol `formal/` proved before the port (formerly `docs/membership/EIP_CLAIMS.md`): the first fit to the EIP's claims, one
 point a claim, each a plain point evaluation of the whole committed multilinear. `m = log_rows + 2` (24 at `2^22`
 rows):
 
@@ -70,7 +70,7 @@ claim on a conic binds three row values (−1,536), no selector (−256).
 
 ## leanVM
 
-| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` states it) | `866ba889` | `bbb0255c` (π2v3) | now (π2v4) |
+| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` stated it before the port) | `866ba889` | `bbb0255c` (π2v3) | now (π2v4; `formal/` states it) |
 |---|---:|---:|---:|---:|---:|
 | inner proof | π1-rec3 | π1-rec3 | π1-rec3 | π1-rec4 | π1-rec4 |
 | π1's claims | encoded by the contract | encoded by the contract (24-byte challenges, selector) | `C1`'s hashed in π2's circuit (20-byte challenges, no selector) | all three hashed | all three hashed |

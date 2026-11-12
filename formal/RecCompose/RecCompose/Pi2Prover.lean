@@ -1,12 +1,14 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/prover.rs`
--- (`halves`, `public_scalars`, `prove_with`, `h_on_v`, `quotient_on_extension`, `open`, `claims`; `PI2.md` §3), π2v3
--- on the EIP draft's PCS claims. The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`,
+-- (`halves`, `public_scalars`, `frame_words`, `prove_with`, `h_on_v`, `quotient_on_extension`, `open`, `claims`;
+-- `PI2.md` §3), π2v4 (main 7e6d353c) on the EIP draft's PCS claims; `mulX` is `crates/membership/quotient`'s
+-- `protocol::mul_x`. The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`,
 -- `sampleW`, `commitWithH`), the PCS claims' openings `formal/UniKeccakComplete`'s (`pcsProveH`) at a given
 -- out-of-domain point (`Pi2PcsZ`'s `pcsProveZH`), the point `WhirBridge.Pcs.oodPointM` (`pcs_claim::ood_point`), the
 -- transforms `formal/Statement`'s (`PcsQuotient.Domain.values`, `coefficients`).
 import RecStatement
 import RecPiop
-import RecCircuit
+import RecCircuit.Piop
+import RecCircuit.Check
 import UniKeccakComplete.K.Prover
 import UniKeccakComplete.K.PcsProver
 import UniKeccakComplete.K.AlgHPoly
@@ -20,7 +22,8 @@ import RecCompose.Pi2PcsZ
 circuit as π2's PIOP reads it (`RecPiop.Circuit E`: positions, roles, blocks, `σ`, `κ`, ports; the compiled circuit's
 `toPiop` at the deployment):
 
-1. **the public values** (`PublicValue`), each as its read takes it (`sendInteger`, `sendRoot` of `halvesOf`, `sendScalar`);
+1. **the public values** (`PublicValue`), each as its read takes it (`sendInteger`, `sendRoot` of `halvesOf`, `sendScalar`,
+   `narrowWire`: 20 bytes; a frame word `.word` is not in the stream: the seed hashes it, `frameWordsOf`);
 2. **`W`**: the witness's basis-`B` coefficients (`bCoefficients`), the leading words of `W`'s stack (`padStack`, zeros
    to `2^vars` words, `vars` of `stackVars`), committed (`commitWithH`), its out-of-domain point (`oodPt vars root`,
    a parameter: `ood_point(n, root)`, `n` Keccak-256 calls, `WhirBridge.Pcs.oodPointM H` in `pi2ProverWith`), its
@@ -34,14 +37,16 @@ circuit as π2's PIOP reads it (`RecPiop.Circuit E`: positions, roles, blocks, `
    indicator, `P_v` (`pvAtCoset`), the ports' `T = Σ I_p (E_p + Φ_k)` (`tAtCoset`, `Φ` the verifier's `phiAt`),
    `d_pull`, `d_push = α + P + κ + βσ`, `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and
    `q_P = (P + P_v) / Z_V`; their novel coefficients (`coefficients` at `D`'s offset);
-5. **`Q`**: the plain stack of sixteen slots of `N` (`qEntry`: slot `digit + 2 kind + 4 limb`: `h`, `q` three limbs
-   each, `P` at digit `1` and `q_P` at limb code `3`; slots `1, 5, 9, 12` zero, `emptySlots`), zeros to `2^vars` words,
-   committed, its point, its root's bytes and its answer; `t`;
+5. **`Q`**: the plain stack of sixteen slots of `N` (`qEntry`: slot `b_0 + 2 b_1 + 4 limb`: for limbs `0, 1, 2`
+   `H = x h` (`mulX` of `h`'s novel coefficients, its top one, zero for a witness, dropped) at `(0, 0)`, `q`'s two
+   digits at `(1, 0)`, `(0, 1)`, `G` zero at `(1, 1)`; at limb code `3` `P`, `q_P`'s two digits, `S` zero: slots
+   `3, 7, 11, 15` zero, `emptySlots`), zeros to `2^vars` words, committed, its point, its root's bytes and its
+   answer; `t`;
 6. **the values at `t`**: the `2^r` fold values (`foldValues`), `ξ = κ(t) + β σ(t)` (`xiOf`, PI2.md §9) and
    `s = P(t)` (`sOf`); `ρ`.
 
-`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input)` and the five PCS claims' openings (`pcsProveZH`, one
-per claim: `W`'s, the setup's, `Q`'s identity, pushes' and sum claims, in the contract's order, each a point of its
+`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input ‖ frame words)` and the four PCS claims' openings
+(`pcsProveZH`, one per claim: `W`'s, the setup's, `Q`'s identity and pushes' claims, in the contract's order, each a point of its
 whole stack; `W`'s and `Q`'s at the points the stream's run asked, the setup's at the deployed `oodPoint`, as the
 contract reads them: `RecStatement.pcsOpenWords`), the claims the verifier's arithmetic on the prover's own inputs
 (`CoreSpec.run`, which the verifier's run on the stream reproduces); `none` if a proof of work fails.
@@ -60,11 +65,13 @@ open RecStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Prot
 /-! ## The public values -/
 
 /-- **A public value** as the stream carries it (`PublicValue`): an integer, 32 bytes as they are (π1's roots as
-the claims' root words), an element of `E`. -/
+the claims' root words), an element of `E` (read whole or narrow), or a frame word (`Read.frame`: not in the stream,
+hashed by the seed). -/
 inductive PublicValue where
   | integer (x : ℕ)
   | root (bytes : List UInt8)
   | scalar (x : E)
+  | word (bytes : List UInt8)
   deriving Inhabited
 
 /-- **`halves(bytes)`**: the two scalars `next_root` reads from 32 bytes, each 16-byte half big-endian limbs `1, 0`. -/
@@ -77,28 +84,37 @@ def PublicValue.scalars : PublicValue → List E
   | .integer x => [UniStatement.eK (UInt64.ofNat x)]
   | .root b => [(halvesOf b).1, (halvesOf b).2]
   | .scalar x => [x]
+  | .word b => UniStatement.publicWordsOf b
+
+/-- **`frame_words(values)`**: the frame words among the values, in order, as the seed hashes them. -/
+def frameWordsOf (values : List PublicValue) : List UInt8 :=
+  values.flatMap fun v ↦ match v with
+    | .word b => b
+    | _ => []
 
 /-- **`public_scalars(public_input, values)`**: the public input's four words, then the values'. -/
 def publicScalarsOf (input : List UInt8) (values : List PublicValue) : List E :=
   UniStatement.publicWordsOf input ++ values.flatMap PublicValue.scalars
 
+/-- A narrow element's 20 bytes (`send_narrow`): its scalar's 24 bytes without the first four (`c2 < 2^32`). -/
+def narrowWire (x : E) : List UInt8 := (UniComplete.scalarWire x).drop 4
+
 section Send
 
 variable {m : Type → Type} [Monad m]
 
-/-- **The public values written** as their reads take them (`send_integer`, `send_root(halves)`, `send`). -/
-def sendPublic : List (Read × PublicValue) → UniComplete.WrM m Unit
-  | [] => pure ()
-  | (.integer b, .integer x) :: rest => do
-    UniComplete.sendInteger x b
-    sendPublic rest
-  | (.root, .root bytes) :: rest => do
-    UniComplete.sendRoot (halvesOf bytes)
-    sendPublic rest
-  | (.scalar, .scalar x) :: rest => do
-    UniComplete.sendScalar x
-    sendPublic rest
-  | _ :: rest => sendPublic rest
+/-- **A public value's bytes** as its read takes it (`send_integer`, `send_root(halves)`, `send`, `send_narrow`; a
+frame word, and a value of another kind than its read, nothing: the Rust panics on the latter). -/
+def publicBytes : Read × PublicValue → List UInt8
+  | (.integer b, .integer x) => UniComplete.integerWire x b
+  | (.root, .root bytes) => UniStatement.rootWord (halvesOf bytes)
+  | (.scalar, .scalar x) => UniComplete.scalarWire x
+  | (.narrow, .scalar x) => narrowWire x
+  | _ => []
+
+/-- **The public values written**, in order (`publicBytes` each). -/
+def sendPublic (ps : List (Read × PublicValue)) : UniComplete.WrM m Unit :=
+  UniComplete.sendBytes (ps.flatMap publicBytes)
 
 end Send
 
@@ -228,17 +244,37 @@ def qpNovel (γ : E) : Array K :=
 /-- Limb `l` of an element of `E` (`0` past the third). -/
 def limbN (x : E) (l : ℕ) : K := if h : l < 3 then x.limb ⟨l, h⟩ else 0
 
-/-- **`Q`'s table** (sixteen slots of `2^m`): entry `pd + 2^(m+1)(kind + 2 limb)`, `pd < 2N`: at limbs `0, 1, 2`, `h`'s
-(kind `0`, `pd < N`) or `q`'s (kind `1`) novel coefficient `pd`, that limb; at limb code `3`, `P`'s coefficient
-`pd − N` (kind `0`, digit `1`) or `q_P`'s (kind `1`); zero elsewhere. -/
-def qEntry (m : ℕ) (hN qN : Array E) (pN qpN : Array K) (i : ℕ) : K :=
-  let pd := i % 2 ^ (m + 1)
-  let kl := i / 2 ^ (m + 1)
-  if kl / 2 < 3 then
-    (if kl % 2 = 0 then (if pd < 2 ^ m then limbN (hN.getD pd 0) (kl / 2) else 0)
-      else limbN (qN.getD pd 0) (kl / 2))
-  else if kl / 2 = 3 then
-    (if kl % 2 = 0 then (if pd < 2 ^ m then 0 else pN.getD (pd - 2 ^ m) 0) else qpN.getD pd 0)
+/-- `low(j)`, the lowest power of two in `j > 0` (`0` at `0`). -/
+def lowBit : ℕ → ℕ
+  | 0 => 0
+  | j + 1 => if (j + 1) % 2 = 1 then 1 else 2 * lowBit ((j + 1) / 2)
+
+/-- **`mul_x`** (`quotient::protocol::mul_x`): `x F` in the novel basis, `F` of `f.size` (a power of two) coefficients:
+the product's first `f.size` coefficients, coefficient `0` zero and coefficient `j ≥ 1` `f[j − 1] + f[j + low(j) − 1]`
+(`x X_{j−1} = …`; `F`'s top coefficient, the product's coefficient `f.size`, dropped). -/
+def mulX (f : Array E) : Array E :=
+  Array.ofFn (n := f.size) fun j ↦
+    if j.val = 0 then 0 else f.getD (j.val - 1) 0 + f.getD (j.val + lowBit j.val - 1) 0
+
+/-- **`Q`'s table** (sixteen slots of `2^m`, `verifier::QUOTIENT_SLOTS`): entry `pos + 2^m (b + 4 limb)`, `pos < 2^m`,
+`b = b_0 + 2 b_1`: at limbs `0, 1, 2`, `H`'s (`b = 0`, `hxN` its novel coefficients) or `q`'s (`b = 1, 2`: its
+coefficient `pos`, `2^m + pos`) novel coefficient, that limb, `G` zero (`b = 3`); at limb code `3`, `P`'s coefficient
+(`b = 0`), `q_P`'s (`b = 1, 2`), `S` zero (`b = 3`); zero past the sixteen slots. -/
+def qEntry (m : ℕ) (hxN qN : Array E) (pN qpN : Array K) (i : ℕ) : K :=
+  let pos := i % 2 ^ m
+  let slot := i / 2 ^ m
+  let b := slot % 4
+  let limb := slot / 4
+  if limb < 3 then
+    (if b = 0 then limbN (hxN.getD pos 0) limb
+      else if b = 1 then limbN (qN.getD pos 0) limb
+      else if b = 2 then limbN (qN.getD (2 ^ m + pos) 0) limb
+      else 0)
+  else if limb = 3 then
+    (if b = 0 then pN.getD pos 0
+      else if b = 1 then qpN.getD pos 0
+      else if b = 2 then qpN.getD (2 ^ m + pos) 0
+      else 0)
   else 0
 
 /-- **The fold values at `t`** (`folds`): `a_k = Σ_j eq(j; w_r(t), …, w_{m−1}(t)) T_{k + 2^r j}`, `k < 2^r`. -/
@@ -326,11 +362,11 @@ def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ →
   let β ← UniComplete.sampleW H
   let γ ← UniComplete.sampleW H
   -- Q
-  let hN := hNovel G w α β
+  let hxN := mulX (hNovel G w α β)
   let qN := qNovel G w α β γ (phiOn S pubs γ)
   let pN := pNovel G w
   let qpN := qpNovel G w γ
-  let qStack := padStack qv (qEntry n hN qN pN qpN)
+  let qStack := padStack qv (qEntry n hxN qN pN qpN)
   let qTree ← (StateT.lift (E2ECompleteness.commitWithH H qv qStack) : UniComplete.WrM m LeanVM.Prover.Tree)
   let qz ← (StateT.lift (oodPt qv qTree.root) : UniComplete.WrM m (List E))
   UniComplete.sendRoot (UniStatement.rootHalves qTree.root)
@@ -345,26 +381,26 @@ def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ →
   let c ← get
   return ⟨c.stream, wStack, wTree, qStack, qTree, ⟨pubs, α, β, γ, t, a, ξ, s, ρ⟩, wz, qz⟩
 
-/-- **The five opening proofs** of π2's claims, in the contract's order (`claims`): `W`'s, the setup's, `Q`'s identity,
-pushes' and sum claims. -/
+/-- **The four opening proofs** of π2's claims, in the contract's order (`claims`): `W`'s, the setup's, `Q`'s identity
+and pushes' claims. -/
 structure Pi2Openings where
   w : Compile.Proof
   setup : Compile.Proof
   qId : Compile.Proof
   qPush : Compile.Proof
-  qSum : Compile.Proof
 
-/-- **π2's honest prover** over `H`, `F` (`prove_with`, then `open`): the seed `keccak(NAME ‖ IV ‖ public input)`, the
-stream (`W`'s and `Q`'s out-of-domain points by `oodPt`), then the five PCS claims' openings (`pcsProveZH`, one per
-claim, in the contract's order: `W`'s, the setup's, `Q`'s identity, pushes' and sum claims; `W`'s and `Q`'s at the
+/-- **π2's honest prover** over `H`, `F` (`prove_with`, then `open`): the seed `keccak(NAME ‖ IV ‖ public input ‖
+frame words)` (`frameWordsOf values`), the stream (`W`'s and `Q`'s out-of-domain points by `oodPt`), then the four PCS
+claims' openings (`pcsProveZH`, one per claim, in the contract's order: `W`'s, the setup's, `Q`'s identity and pushes'
+claims; `W`'s and `Q`'s at the
 points the stream asked, the setup's at the deployed `oodPoint`, `pcsZ`), at the claims of the verifier's arithmetic
 (`CoreSpec.run` of the circuit's view) on the prover's inputs, each on its commitment's whole stack (`stackVars`; the
 setup's table `setupStack` and its tree given, the table padded with zeros to its stack, `padStack`); the stream and
-the five proofs, or `none` if a proof of work fails. -/
+the four proofs, or `none` if a proof of work fails. -/
 def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → m (List E)) (view : Circuit)
     (setupStack : Array K) (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue)
     (w : ℕ → K) : m (Option (Array UInt8 × Pi2Openings)) := do
-  let seed ← H (RecStatement.name ++ iv ++ input)
+  let seed ← H (RecStatement.name ++ iv ++ input ++ frameWordsOf values)
   let (out, _) ← (pi2ProveStreamWith H G (Spec.of view).core oodPt view.reads setupStack input values w).run
     (UniComplete.Wr.start seed)
   let o := (Spec.of view).core.run out.inputs
@@ -376,14 +412,12 @@ def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (oodPt : ℕ → Digest �
     (padStack sv fun i ↦ setupStack.getD i 0) o.setupPoint out.inputs.ξ
   let pQ1 ← PcsZ.pcsProveZH H F fuel qv out.qPoint out.qTree out.qStack o.quotientPoint o.quotientValue
   let pQ2 ← PcsZ.pcsProveZH H F fuel qv out.qPoint out.qTree out.qStack o.pushesPoint o.pushesValue
-  let pQ3 ← PcsZ.pcsProveZH H F fuel qv out.qPoint out.qTree out.qStack o.sumPoint o.sumValue
   return do
     let a ← pW
     let b ← pS
     let c ← pQ1
     let d ← pQ2
-    let e ← pQ3
-    pure (out.stream, ⟨a, b, c, d, e⟩)
+    pure (out.stream, ⟨a, b, c, d⟩)
 
 end With
 

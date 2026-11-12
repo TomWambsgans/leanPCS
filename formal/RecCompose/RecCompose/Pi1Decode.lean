@@ -221,7 +221,7 @@ theorem decodePi1Call_claim (rootB : List UInt8) (ood : E) (pt : List E) (v : E)
     simp only [hW, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil, or_false] at hw'
     rcases hw' with (rfl | rfl) | ⟨x, -, rfl⟩ | rfl <;> simp [hr]
   have hflen : W.flatten.length = 32 * W.length := length_flatten_32 W hlen
-  unfold decodePi1Call
+  unfold decodePi1Call words32
   rw [hcall, ite_eq_right (by rw [hflen]; omega), chunks_flatten W hlen]
   unfold claimOfWords
   have h0 : W.head? = some rootB := rfl

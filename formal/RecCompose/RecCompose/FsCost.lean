@@ -13,11 +13,11 @@ import UniSound.FsGame
 
 The facts the assembly of π2's Fiat–Shamir layer takes about the composed verifier (`p2Ver`) and its IV:
 
-* **the lengths** of what it hashes: the circuit's encoding (`cc_encoding_length`, `24464` bytes, from its parts'
+* **the lengths** of what it hashes: the circuit's encoding (`cc_encoding_length`, `27392` bytes, from its parts'
   lengths and the data's list lengths only), σ's and κ's inputs (`4 · 2^24`, `8 · 2^24` bytes), the digest's
-  (`24528`), the IV's (`137`); the chain's queries (`nQ_p2 = 6`);
+  (`27456`), the IV's (`137`); the chain's queries (`nQ_p2 = 6`);
 * **`duplexVm_p2Ver`**, **`cost_p2Ver`**: the verifier uses only the two calls, and calls `π` at most `2^49` times
-  (every query short: at most `80986` queries of at most `2^32` blocks);
+  (every query short: at most `71060` queries of at most `2^32` blocks);
 * **the IV moved into the adversary** (`expU_p2IvAdv`, `isTotalQueryBound_p2IvAdv`): the game with the IV in the
   verifier is the one whose adversary computes it last, its log four entries longer (`ivLog`), none of a Merkle
   node's `64` or a leaf's `512` bytes, so the extractor reads the same word (`extractorK_ivLog`);
@@ -79,16 +79,16 @@ theorem length_flatMap_const {α : Type} (l : List α) (f : α → List UInt8) (
   rw [List.length_flatMap, List.map_congr_left (fun a _ ↦ h a), List.map_const', List.sum_replicate, smul_eq_mul,
     Nat.mul_comm]
 
-theorem formulas_len : (cc.formulas.map formLen).sum = 16728 := by decide +kernel
+theorem formulas_len : (cc.formulas.map formLen).sum = 17240 := by decide +kernel
 
-theorem publicTerms_len : (cc.publicTerms.map fun t ↦ 8 + linLen t.value).sum = 1992 := by decide +kernel
+theorem publicTerms_len : (cc.publicTerms.map fun t ↦ 8 + linLen t.value).sum = 3016 := by decide +kernel
 
-theorem pairs_length : cc.pairs.length = 134 := by decide +kernel
+theorem pairs_length : cc.pairs.length = 176 := by decide +kernel
 
-theorem reads_length : cc.reads.length = 21 := by decide +kernel
+theorem reads_length : cc.reads.length = 3 := by decide +kernel
 
-/-- **The circuit's encoding has `24464` bytes** (`Circuit::digest`'s bytes before the setup columns' hashes). -/
-theorem cc_encoding_length : cc.encoding.length = 24464 := by
+/-- **The circuit's encoding has `27392` bytes** (`Circuit::digest`'s bytes before the setup columns' hashes). -/
+theorem cc_encoding_length : cc.encoding.length = 27392 := by
   unfold RecStatement.Circuit.encoding
   simp only [List.length_append, length_le64]
   rw [List.length_flatMap, List.map_congr_left (fun f _ ↦ length_formula f), formulas_len,
@@ -140,7 +140,7 @@ theorem length_kappa_real (r : UniKeccak.SetupRootsK) : (kappaBytes (D.circuitAt
   rw [length_kappaBytes, circuitAt_n hD]
 
 theorem length_digIn_real (r : UniKeccak.SetupRootsK) (sg kp : Bytes32) :
-    (digIn (D.circuitAt r) sg kp).length = 24528 := by
+    (digIn (D.circuitAt r) sg kp).length = 27456 := by
   rw [length_digIn, circuitAt_circuit hD, cc_encoding_length]
 
 end Real
@@ -211,9 +211,9 @@ theorem isTotalQueryBound_p2IvAdv (D : RecDeployment) (A₀ : SOut → OracleCom
 /-! ## The event reads the transcript's answers only -/
 
 /-- **`P2BreaksRel` reads the transcript through its answers only.** -/
-theorem p2BreaksRel_congr (D : RecDeployment) (P : RecSetupRoots → Pi2St → Stk → Prop)
+theorem p2BreaksRel_congr (P : RecSetupRoots → Pi2St → Stk → Prop)
     (z : P2Pf × (List (List E) × List Bool)) (tr tr' : Transcript) (h : ∀ x, lookTr tr x = lookTr tr' x)
-    (hz : P2BreaksRel D P (z, tr)) : P2BreaksRel D P (z, tr') := by
+    (hz : P2BreaksRel P (z, tr)) : P2BreaksRel P (z, tr') := by
   obtain ⟨hH, hT⟩ := histOfTr_tableOfTr_congr h
   refine ⟨hz.1, hz.2.1, fun c hc => hz.2.2 c ?_⟩
   unfold extractorK at hc ⊢
@@ -265,7 +265,7 @@ theorem logImplKC_p2IvKC4 {β : Type} (D : RecDeployment) (π : P2Pf)
 and appending its four entries to the log, the experiment whose adversary computes the IV last. -/
 theorem expU_p2IvAdv (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
     (A₀ : SOut → OracleComp KeccakCalls P2Pf) :
-    expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (gopsRun p2View (p2Ops D)) =
+    expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (gopsRun p2View p2Ops) =
       (fun w => (ivOut2 w.1, w.2 ++ ivLog D w.1.1 w.1.2.1)) <$> kcGameS (p2Setup D hs) p2Fix A₀ (p2Ver D) := by
   have hw : withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀) =
       withSetupG (p2Setup D hs) p2Fix A₀ >>= fun π => (fun x => setIv2 x.2.2.2 π) <$> p2IvKC4 D π := by
@@ -277,9 +277,9 @@ theorem expU_p2IvAdv (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 /-! ## The composed verifier's calls of `π` -/
 
-/-- The openings' query counts: `8 · 10150` (`Q`'s three in one opening). -/
-theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.QO).sum = 81200 := by
-  simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
+/-- The openings' query counts: `7 · 10150` (π1's three with `W`'s, `Q`'s two, in one opening each). -/
+theorem sumQO_p2 : (p2Ops.map fun o => o.QO).sum = 71050 := by
+  simp [p2Ops, PcsOp.gop, qOp, wOpM]
 
 /-- **A PCS claim's opening makes short queries only** (`UniKeccakSound.allQ_pcsOpenC`). -/
 theorem allQ_pcsOp (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
@@ -292,22 +292,28 @@ theorem allQ_pcsOp (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
     · exact allQ_pcsOpenCO _ _ _ _ _ _
     · exact UniKeccakSound.allQ_pcsOpenC _ _ _ _ _ _
 
+/-- **A declared π1 claim's opening makes short queries only.** -/
+theorem allQ_declVer (k : ℕ) (π : P2Pf) : AllQueriesSatisfy (declVer k π) Short := by
+  unfold declVer
+  split
+  · trivial
+  · split
+    · exact allQ_pcsOpenCO _ _ _ _ _ _
+    · exact UniKeccakSound.allQ_pcsOpenC _ _ _ _ _ _
+
 /-- **The composition's openings make short queries only.** -/
-theorem allQ_p2Ops (D : RecDeployment) : ∀ o ∈ p2Ops D, ∀ r π ch, AllQueriesSatisfy (o.ver r π ch) Short := by
+theorem allQ_p2Ops : ∀ o ∈ p2Ops, ∀ r π ch, AllQueriesSatisfy (o.ver r π ch) Short := by
   intro o ho r π ch
-  simp only [p2Ops, p2Pcs5, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.mem_cons,
-    List.mem_nil_iff, or_false] at ho
-  rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
-  · exact allQ_pcsOp _ r π ch
-  · exact allQ_pcsOp _ r π ch
-  · exact allQ_pcsOp _ r π ch
-  · exact allQ_pcsOp _ r π ch
+  simp only [p2Ops, List.mem_cons, List.mem_nil_iff, or_false] at ho
+  rcases ho with rfl | rfl | rfl
+  · exact allQueriesSatisfy_bind (allQ_declVer 0 π) fun _ => allQueriesSatisfy_bind (allQ_declVer 1 π) fun _ =>
+      allQueriesSatisfy_bind (allQ_declVer 2 π) fun _ =>
+        allQueriesSatisfy_bind (allQ_pcsOp wPcs r π ch) fun _ => LeanVM.Rpm.allQ_pure _
   · exact allQ_pcsOp _ r π ch
   · exact allQueriesSatisfy_bind (allQ_pcsOp qIdOp r π ch) fun _ =>
-      allQueriesSatisfy_bind (allQ_pcsOp qPushOp r π ch) fun _ =>
-        allQueriesSatisfy_bind (allQ_pcsOp qSumOp r π ch) fun _ => LeanVM.Rpm.allQ_pure _
+      allQueriesSatisfy_bind (allQ_pcsOp qPushOp r π ch) fun _ => LeanVM.Rpm.allQ_pure _
 
-/-- The bytes a step absorbs: at most `520 + 32 + 24 B` for messages of at most `B` scalars. -/
+/-- The bytes a step absorbs: at most `0 + 32 + 24 B` for messages of at most `B` scalars (no public data). -/
 theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List RoundSpec)
     (ms : List (RMsg E)), (∀ m ∈ ms, m.2.length ≤ B) →
       ∀ e ∈ absorbsI (pi2Spec.encAt s) i rs ms, e.length ≤ pLen + 32 + 24 * B
@@ -325,9 +331,7 @@ theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List R
       have he : (pi2Spec.enc (ms.headD (none, []))).length = (UniSound.uniEnc (ms.headD (none, []))).length := rfl
       split_ifs
       · rw [List.length_append]
-        have hp : (pi2Spec.pre s).length = pLen := by
-          show s.2.2.toList.length = pLen
-          simp
+        have hp : (pi2Spec.pre s).length = pLen := rfl
         omega
       · omega
     · simp
@@ -336,18 +340,18 @@ theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List R
 theorem allQ_hash256' {x : List UInt8} (hx : x.length ≤ 2 ^ 32) : AllQueriesSatisfy (hash256 x) Short :=
   UniSound.allQ_hash256 (hx.trans (by norm_num))
 
-/-- **The composed verifier calls `π` at most `2^49` times**: at most `4 + 6 + 81200` queries (the IV's, the chain's,
-the eight openings'), each short. -/
+/-- **The composed verifier calls `π` at most `2^49` times**: at most `4 + 6 + 71050` queries (the IV's, the chain's,
+the seven openings'), each short. -/
 theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
     Common.QueryCostAtMost (p2Ver D π) LeanVM.Rpm.hashBlocks (2 ^ 49) := by
-  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 81200)) := by
+  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 71050)) := by
     unfold p2Ver
     refine isTotalQueryBound_bind (isTotalQueryBound_p2IvKC4 D π) fun x =>
       (isQueryBound_map_iff _ _ _ _ _).mpr ?_
     unfold verU
     refine IsTotalQueryBound.mono (isTotalQueryBound_bind (isTotalQueryBound_chainU _ _ _) fun ch =>
       isTotalQueryBound_bind (n₂ := 0) (isTotalQueryBound_gopsRun _ _ _ _) fun _ => trivial) ?_
-    rw [nQ_p2, sumQO_p2 D]
+    rw [nQ_p2, sumQO_p2]
   have hiv : AllQueriesSatisfy (p2IvKC4 D π) Short := by
     unfold p2IvKC4
     refine allQueriesSatisfy_bind (allQ_hash256' (by rw [length_sigma_real hD]; norm_num)) fun sg => ?_
@@ -377,18 +381,19 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
       simp only [pLen] at this
       omega
     · simp only [Function.comp_apply, pure_bind]
-      exact allQueriesSatisfy_bind (UniKeccakSound.allQ_gopsRunK _ _ _ _ (allQ_p2Ops D)) fun _ =>
+      exact allQueriesSatisfy_bind (UniKeccakSound.allQ_gopsRunK _ _ _ _ allQ_p2Ops) fun _ =>
         LeanVM.Rpm.allQ_pure _
   refine (LeanVM.Rpm.isWeightBound_of_isTotalQueryBound hashBlocks (2 ^ 32) htot
     (hall.mono fun _ h => LeanVM.Rpm.hashBlocks_le_of_short h)).mono ?_
   norm_num
 
-/-! ## The seed is `name ‖ iv ‖ input`, the IV an answer the adversary asked -/
+/-! ## The seed is `name ‖ iv ‖ input ‖ frame words`, the IV an answer the adversary asked -/
 
 theorem p2Label_take32 (s : FSt2) : (p2Label s).take 32 = RecStatement.name ++ s.1.toList.take 16 := by
   unfold p2Label
-  rw [List.append_assoc, List.take_append, List.take_of_length_le (l := RecStatement.name) (by rw [name_length]; omega),
-    name_length, List.take_append_of_le_length (l₁ := s.1.toList) (by simp)]
+  rw [List.append_assoc, List.append_assoc, List.take_append,
+    List.take_of_length_le (l := RecStatement.name) (by rw [name_length]; omega), name_length,
+    List.take_append_of_le_length (l₁ := s.1.toList) (by simp)]
 
 /-- **The seed's first 32 bytes are `name ‖ iv[0:16]`, `iv` the answer to the adversary's last query** (`p2IvAdv`:
 π2's IV of the proof the setup fixes). -/

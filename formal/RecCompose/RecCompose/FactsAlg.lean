@@ -149,19 +149,23 @@ def canon2 (x : E) : List E := [x + F192.Y * F192.ofF64 (F192.limb x 1), F192.of
 /-- `x`'s three limbs. -/
 def limbs3 (x : E) : List E := [F192.ofF64 (F192.limb x 0), F192.ofF64 (F192.limb x 1), F192.ofF64 (F192.limb x 2)]
 
-/-- **Port `j`'s public limbs** of π2's public scalars `pubs`, by its source (`roots` π2's roots count). -/
-def pubOfSource (roots : ℕ) (pubs : List E) : RecCircuit.Source → List E
+/-- **Port `j`'s public limbs** of π2's public scalars `pubs`, by its source (`hashes` the claims hashed, `roots`
+π2's roots count): the statement's and a claim hash's four words (scalars `0 .. 4`, `4 + 4i ..`), a root's halves, an
+element's three limbs. -/
+def pubOfSource (hashes roots : ℕ) (pubs : List E) : RecCircuit.Source → List E
   | .statement => canon2 (pubs.getD 0 0 + F192.Y * pubs.getD 1 0) ++ canon2 (pubs.getD 2 0 + F192.Y * pubs.getD 3 0)
-  | .root i => canon2 (pubs.getD (4 + 2 * i + 1) 0) ++ canon2 (pubs.getD (4 + 2 * i) 0)
-  | .element i => limbs3 (pubs.getD (4 + 2 * roots + i) 0)
+  | .claimHash i => canon2 (pubs.getD (4 + 4 * i) 0 + F192.Y * pubs.getD (4 + 4 * i + 1) 0) ++
+      canon2 (pubs.getD (4 + 4 * i + 2) 0 + F192.Y * pubs.getD (4 + 4 * i + 3) 0)
+  | .root i => canon2 (pubs.getD (4 + 4 * hashes + 2 * i + 1) 0) ++ canon2 (pubs.getD (4 + 4 * hashes + 2 * i) 0)
+  | .element i => limbs3 (pubs.getD (4 + 4 * hashes + 2 * roots + i) 0)
   | .zero | .pad => [0, 0, 0]
 
 /-- **The compiled circuit's public limbs.** -/
 def pubOfC (c : RecCircuit.Circuit) (pubs : List E) (j : ℕ) : List E :=
-  pubOfSource (publicCounts c).1 pubs (c.ports.getD j default).source
+  pubOfSource c.hashed.length (publicCounts c).1 pubs (c.ports.getD j default).source
 
-theorem pubOfSource_length (roots : ℕ) (pubs : List E) (s : RecCircuit.Source) :
-    (pubOfSource roots pubs s).length = s.limbs := by
+theorem pubOfSource_length (hashes roots : ℕ) (pubs : List E) (s : RecCircuit.Source) :
+    (pubOfSource hashes roots pubs s).length = s.limbs := by
   cases s <;> rfl
 
 theorem canon2_fp (x : E) : (canon2 x).getD 0 0 + F192.Y * (canon2 x).getD 1 0 = x := by

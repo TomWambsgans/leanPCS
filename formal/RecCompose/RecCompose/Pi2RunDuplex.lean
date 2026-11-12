@@ -1,11 +1,11 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProverDuplex.lean`, `VerifierHDuplex.lean` and `Rec3ProbExp.lean`'s `duplexVm_stagedU3`, for `Pi2ProbStaged`'s
--- staged run (`pi2Staged`: the setup, π1-rec3's prover, π1-rec3's graph, π2's honest prover
+-- staged run (`pi2Staged`: the setup, π1-rec4's prover, π1-rec4's graph, π2's honest prover
 -- `crates/leanvm/rec/src/pi2/prover.rs`, the contract `formal/RecStatement`); uses
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Duplex.lean` (`Disc`, `disc_proveOpeningWithH`, `disc_openingWithH`,
 -- `hOnly_commitWithH`) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): the duplex discipline (`DuplexVm`, `DuplexP`, `HOnly`).
-import RecCompose.Pi2P1
+import RecCompose.Pi2ProbStaged
 
 /-!
 # The duplex discipline of π2's staged run (`Pi2RunDuplex`)
@@ -19,10 +19,10 @@ calls do (`Pi1Disc D P1k`, named).
   `post2`: the public values, the commitments, `W`'s and `Q`'s out-of-domain points `hOnly_oodPointM`, the
   challenges) and the contract's run on the calldata (`cHOnly_runWithH`: the channel's calculus `CHOnly`, every
   challenge a Keccak-256 call).
-* **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's (`Pi1Disc`), the graph's
-  three claims' openings and the contract's eight (`disc_pcsOpenKH`; `W`'s and `Q`'s with the point read off
+* **The permutation is called by the openings only**, each disciplined: π1-rec4's prover's (`Pi1Disc`), the graph's
+  three claims' openings and the contract's seven (`disc_pcsOpenKH`; `W`'s and `Q`'s with the point read off
   Keccak-256, `disc_pcsOpenKOH`: the IV's hash, the seed's permutation, the point's hashes, the program), π2's
-  prover's five (`PcsZ.disc_pcsProveZH`).
+  prover's four (`PcsZ.disc_pcsProveZH`, `disc_restC`).
 * **The staged run** (`disc_pi2Staged`): for any `P1k` that is disciplined (`Disc`).
 -/
 
@@ -33,7 +33,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open RecStatement
 open UniStatement (Chan ChanM)
 open E2ECompleteness (Disc disc_pure disc_of_hOnly)
-open UniKeccakComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar wHOnly_sendScalars wHOnly_sendInteger disc_forIn_list)
+open UniKeccakComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar
+  wHOnly_sendScalars wHOnly_sendBytes disc_forIn_list)
 
 namespace RecCompose.Pi2G
 
@@ -143,25 +144,31 @@ theorem cHOnly_finish : CHOnly (UniStatement.finish (m := OracleComp KeccakCalls
   unfold UniStatement.finish
   exact cHOnly_get.bind fun _ ↦ cHOnly_ite _ (cHOnly_pure _) (cHOnly_throw _)
 
+theorem cHOnly_nextNarrow : CHOnly (nextNarrow (m := OracleComp KeccakCalls)) :=
+  (cHOnly_takeBytes _).bind fun _ ↦ cHOnly_pure _
+
 /-- **π2's walk on the calldata only hashes.** -/
-theorem cHOnly_reduceWithH (s : Spec) (stmt : List E) : CHOnly (Pi2H.reduceWithH callKeccak256 s stmt) := by
+theorem cHOnly_reduceWithH (s : Spec) (stmt : List E) (frameAt : ℕ → List UInt8) :
+    CHOnly (Pi2H.reduceWithH callKeccak256 s stmt frameAt) := by
   unfold Pi2H.reduceWithH
   refine (cHOnly_forIn_list _ _ _ fun rd pubs ↦ ?_).bind fun pubs ↦ ?_
-  · rcases rd with b | _ | _
+  · rcases rd with b | _ | _ | _ | p
     · exact (cHOnly_nextInteger b).bind fun _ ↦ cHOnly_pure _
     · exact cHOnly_nextRoot.bind fun _ ↦ cHOnly_pure _
     · exact cHOnly_nextScalar.bind fun _ ↦ cHOnly_pure _
+    · exact cHOnly_nextNarrow.bind fun _ ↦ cHOnly_pure _
+    · exact cHOnly_pure _
   · exact cHOnly_nextRoot.bind fun _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦
       cHOnly_sampleH.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ cHOnly_nextRoot.bind fun _ ↦
       cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ (cHOnly_nextScalars _).bind fun _ ↦
       cHOnly_nextScalar.bind fun _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ cHOnly_pure _
 
 /-- **The contract's run on the calldata only hashes.** -/
-theorem hOnly_runWithH (s : Spec) (iv input : List UInt8) (stream : Array UInt8) :
-    HOnly (Pi2H.runWithH callKeccak256 s iv input stream) := by
+theorem hOnly_runWithH (s : Spec) (iv input : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    HOnly (Pi2H.runWithH callKeccak256 s iv input frameAt stream) := by
   unfold Pi2H.runWithH
   refine (hOnly_queryH _).bind fun seed ↦ ?_
-  exact (((cHOnly_reduceWithH s _).bind fun _ ↦ cHOnly_finish.bind fun _ ↦ cHOnly_pure _)
+  exact (((cHOnly_reduceWithH s _ frameAt).bind fun _ ↦ cHOnly_finish.bind fun _ ↦ cHOnly_pure _)
     (Chan.start seed stream)).bind fun _ ↦ hOnly_pure _
 
 /-! ## The setup, the IV, the prover's stream -/
@@ -179,17 +186,8 @@ theorem hOnly_ivOfH (D : RecDeployment) (roots : RecSetupRoots) : HOnly (Pi2H.iv
     hOnly_pure _).bind fun _ ↦ (hOnly_queryH _).bind fun _ ↦ hOnly_pure _)
 
 /-- **The public values' writes only hash** (they do not hash). -/
-theorem wHOnly_sendPublic : ∀ l : List (Read × PublicValue), WHOnly (sendPublic (m := OracleComp KeccakCalls) l)
-  | [] => wHOnly_pure _
-  | (.integer _, .integer _) :: rest => (wHOnly_sendInteger _ _).bind fun _ ↦ wHOnly_sendPublic rest
-  | (.integer _, .root _) :: rest => wHOnly_sendPublic rest
-  | (.integer _, .scalar _) :: rest => wHOnly_sendPublic rest
-  | (.root, .integer _) :: rest => wHOnly_sendPublic rest
-  | (.root, .root _) :: rest => (wHOnly_sendRoot _).bind fun _ ↦ wHOnly_sendPublic rest
-  | (.root, .scalar _) :: rest => wHOnly_sendPublic rest
-  | (.scalar, .integer _) :: rest => wHOnly_sendPublic rest
-  | (.scalar, .root _) :: rest => wHOnly_sendPublic rest
-  | (.scalar, .scalar _) :: rest => (wHOnly_sendScalar _).bind fun _ ↦ wHOnly_sendPublic rest
+theorem wHOnly_sendPublic (l : List (Read × PublicValue)) : WHOnly (sendPublic (m := OracleComp KeccakCalls) l) :=
+  wHOnly_sendBytes _
 
 /-- **The out-of-domain point only hashes** (`n` Keccak-256 calls). -/
 theorem hOnly_oodPointM (n : ℕ) (r : Digest) : HOnly (WhirBridge.Pcs.oodPointM callKeccak256 n r) :=
@@ -219,7 +217,7 @@ theorem wHOnly_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : Lis
 
 /-! ## The verifiers -/
 
-/-- **π1-rec3's graph with its three claims' openings is disciplined.** -/
+/-- **π1-rec4's graph with its three claims' openings is disciplined.** -/
 theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (p : UniKeccak.KeccakProof) : Disc (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) := by
   unfold Pi2H.pi1GraphVerifierWithH
@@ -273,7 +271,8 @@ theorem disc_pcsOpenWordsH (words : List (List UInt8)) (p : Compile.Proof) :
 theorem disc_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     Disc (Pi2H.contractWithH callKeccak256 callKeccakF1600 D roots input proof) := by
   unfold Pi2H.contractWithH
-  refine (disc_of_hOnly (hOnly_ivOfH D roots)).bind fun _ ↦ (disc_of_hOnly (hOnly_runWithH _ _ _ _)).bind fun o ↦ ?_
+  refine (disc_of_hOnly (hOnly_ivOfH D roots)).bind fun _ ↦
+    (disc_of_hOnly (hOnly_runWithH _ _ _ _ _)).bind fun o ↦ ?_
   split
   · exact disc_pure _
   · split
@@ -281,8 +280,11 @@ theorem disc_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : 
     · dsimp only
       split
       · exact disc_pure _
-      · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
-        exact (disc_pcsOpenWordsH _ _).bind fun _ ↦ disc_pure _
+      · try dsimp only
+        split
+        · exact disc_pure _
+        · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
+          exact (disc_pcsOpenWordsH _ _).bind fun _ ↦ disc_pure _
 
 theorem disc_verifierWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     Disc (Pi2H.verifierWithH callKeccak256 callKeccakF1600 D roots input proof) := by
@@ -301,7 +303,9 @@ theorem disc_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   | some p1 =>
     refine (disc_pi1GraphVerifierWithH D _ input p1).bind fun _ ↦
       (disc_of_hOnly (hOnly_setupTreesWithH2 D)).bind fun tr ↦
-      (disc_of_hOnly (hOnly_ivOfH D tr.roots)).bind fun iv ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun seed ↦ ?_
+      (disc_of_hOnly (hOnly_ivOfH D tr.roots)).bind fun iv ↦ ?_
+    dsimp only
+    refine (disc_of_hOnly (hOnly_queryH _)).bind fun seed ↦ ?_
     exact (disc_of_hOnly (wHOnly_pre2 _ _ hOnly_oodPointM _ _ _ _)).bind fun _ ↦ disc_pure _
 
 theorem disc_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
@@ -309,20 +313,24 @@ theorem disc_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt
   unfold stageB
   exact (disc_of_hOnly (wHOnly_mid2 _ _ _ hOnly_oodPointM _ _ _ _ _ _)).bind fun _ ↦ disc_pure _
 
+theorem disc_restC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB)
+    (p1 : UniKeccak.KeccakProof) (out : Pi2Out) : Disc (restC callKeccak256 callKeccakF1600 D C input b p1 out) := by
+  unfold restC
+  refine (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pW ↦
+    (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pS ↦
+    (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pQ1 ↦
+    (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pQ2 ↦ ?_
+  split
+  · exact (disc_verifierWithH _ _ _ _).bind fun _ ↦ disc_pure _
+  · exact disc_pure _
+
 theorem disc_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
     Disc (stageC callKeccak256 callKeccakF1600 D C input b st) := by
   unfold stageC
   split
   · exact disc_pure _
   · refine (disc_of_hOnly (wHOnly_post2 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _)).bind fun x ↦ ?_
-    refine (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pW ↦
-      (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pS ↦
-      (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pQ1 ↦
-      (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pQ2 ↦
-      (PcsZ.disc_pcsProveZH _ _ _ _ _ _ _).bind fun pQ3 ↦ ?_
-    split
-    · exact (disc_verifierWithH _ _ _ _).bind fun _ ↦ disc_pure _
-    · exact disc_pure _
+    exact (disc_restC _ _ _ _ _ _).bind fun _ ↦ disc_pure _
 
 /-- **The staged run is disciplined**, for any disciplined π1 prover. -/
 theorem disc_pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)

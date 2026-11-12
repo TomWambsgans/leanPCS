@@ -5,36 +5,50 @@
 π2 (`crates/leanvm/rec`; `docs/leanvm/rec/SPEC-REC.md` §2.3, §2.4, §10, §12) proves that π1's recorded verifier
 graph accepts. Its circuit is compiled from that graph (`crates/leanvm/rec/src/circuit/compile.rs`). This library
 transcribes the compiler into Lean, checks the compiled circuit, and proves that a satisfied circuit's ports carry the
-graph's outputs on the stream its witness's free bits encode. The compiler is generic; its instance is π1-rec3's graph
-as of `f96a7938` (the deployed π1-rec4's graph, with π1's claims hashed in the circuit, is not yet ported:
-[`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)).
+graph's outputs on the stream its witness's free bits encode. The compiler is generic; its instance is the deployed
+π1-rec4's graph (`leanvm_rec::PI1` at the 128-signature reference): its wide draws (`Wide` nodes), D16v's trimmed last
+rounds, and π1's three claims hashed in the circuit (`compile::hashed_claims`: none on the main line, `[0]` for
+π1-rec3, `[0, 1, 2]` for π1-rec4), each claim's Keccak-256 a `ClaimHash` port.
 
 ## The end theorem (`RecCircuit/End.lean`), no hypotheses left
 
 ```lean
-theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
-    (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv c w
+theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192}
+    {w : ℕ → K} (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv hashed c w
 ```
 
-- **Hypotheses.** `compile (ofRG g rootsAt iv) = .ok c` says that the transcribed compiler ran on the recorded graph
-  `g` (`RecGraph.Graph`) and the checker accepted its circuit. `hw` is π2's PIOP relation for that circuit,
+- **Hypotheses.** `compile (ofRG g rootsAt iv hashed) = .ok c` says that the transcribed compiler ran on the recorded
+  graph `g` (`RecGraph.Graph`), with π1's claims `hashed` hashed in the circuit (`ofRG`'s last argument, `[]` by
+  default; π1-rec4's `[0, 1, 2]`), and the checker accepted its circuit. `hw` is π2's PIOP relation for that circuit,
   `RecPiop.Circuit.Satisfies`, on a witness of `K` words.
 - **`EndStatement`.** On the public input `pubW w` and the stream `streamW r w` that the witness's free bits encode,
   with `V = rgVals g iv (pubW w) (streamW r w)` (`RecGraph.evalNodes` of `g` over Keccak-f[1600]):
   - the statement port carries the public input's four words as RecGraph reads them (`beWordAt`);
-  - root `i`'s port carries the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at`: the four limbs
-    of the root's 32 bytes as the stream carries them, a PCS claim's root field;
-  - the `m`-th zero port carries `V`'s value of the `m`-th zero check whose image is not a constant, and every other
-    zero check is 0 (`compile_sound_zero_end`, `compile_sound_zero_const`);
+  - root `i`'s port carries the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at` (`at` its
+    offset `c.rootsAt[i]`; only the roots an encoded claim names are ported, none for π1-rec4): the four limbs of the
+    root's 32 bytes as the stream carries them, a PCS claim's root field;
+  - the zero ports: the hashed claims' sections make theirs first (`c.claimZeros` of them, one per free element:
+    `packed + limbs`); the `m`-th zero port after them carries `V`'s value of the `m`-th zero check whose image is not
+    a constant (`zeroOrig c r (c.zeroIndex J - c.claimZeros)`), and every other zero check is 0
+    (`compile_sound_zero_end`, `compile_sound_zero_const`);
   - **the claims π2's verifier rebuilds from the ports** (`Circuit.callInputs`, `spec.rs`'s
-    `Circuit::call_inputs`) are `g`'s call words in RecGraph's semantics, call by call and word by word, as
-    a claim holds them (`pcsWord`, the identity on the EIP's PCS claims): every word byte for byte, a setup root (a
-    constant word 0), a stream root and pairs' coordinates included (`compile_sound_callInputs`,
-    `compile_sound_calls`). Constant call words are kept as they are, as in the Rust.
+    `Circuit::call_inputs`) are `g`'s encoded claims (`encodedCalls g hashed`: those not hashed, in call order) in
+    RecGraph's semantics, call by call and word by word, as a claim holds them (`pcsWord`, the identity on the EIP's
+    PCS claims): every word byte for byte, a setup root (a constant word 0), a stream root and pairs' coordinates
+    included (`compile_sound_callInputs`, `compile_sound_calls`). Constant call words are kept as they are;
+  - **the hashed claims** (`ClaimHash.lean`): `c.circuit.hashed = hashed.filter (· < g.calls.length)`
+    (`compile_hashed`), and if every zero port carries zeros (as π2's verifier reads them), port `claimHash j`
+    carries the four statement-order words (limb `l` the big-endian word of bytes `8l .. 8l + 8`) of
+    `keccak256 (claimEncoding S V (g.calls[c.circuit.hashed[j]]))` over Keccak-f[1600] (`claimHash_port`), where
+    `claimEncoding` is the EIP draft's PCS-claim encoding of the graph's call words in RecGraph's semantics: `[1, n]`
+    (`n` = the words less 3), the root's 32 bytes, then each later word's element bytes `8 .. 32`
+    (`claimEncoding_eq`).
 - **Element ports.** `compile_sound_element_end`: element `e`'s port carries `V`'s value of any original node the
   expansion maps to the calls' `e`-th element node.
-- **The Keccak VM's π1-rec3.** `RecGraphKeccak.pi1rec3K_end` (`formal/RecGraphKeccak/RecGraphKeccak/Circuit.lean`) is
-  the end theorem at `RecGraphKeccak.Emitted.graph`. That the compiler accepts this graph is a run, not a proof.
+- **The Keccak VM's π1-rec4.** `RecGraphKeccak.pi1rec4K_end` (`formal/RecGraphKeccak/RecGraphKeccak/Circuit.lean`,
+  built as the module `RecGraphKeccak.Circuit`) is the end theorem at `RecGraphKeccak.Emitted.graph` with its three
+  claims hashed (`hashedK4 = [0, 1, 2]`); `pi1rec4K_claimHashes`: no claim encoded, and the three `claimHash` ports carry
+  the Keccak-256s of the encodings of the graph's three claims, given the zero ports zero. That the compiler accepts this graph is a run, not a proof.
   `rec-circuit-keccak` checks that the Rust's graph file is `RecGraphKeccak.Emitted.graph`, field by field. It then
   runs `compile` on that very term, in compiled code, and prints a circuit identical to the Rust's.
 
@@ -93,13 +107,13 @@ The Rust compiler asserts the same typing (`assert_typed` in `compile.rs`, with 
 | `Check` | the checker; `compile` = `compileRaw` + checks |
 | `Sat` | the dataflow facts: every placement of a value carries one word (`val_holds`); a gate's value is its formula plus `κ` (`gate_val`) |
 | `PolySem` | the formulas' semantics (`build_eval`: a `PolyBuilder`'s polynomial is its sum of terms, XOR cancellation in characteristic 2; `chiB_eval`) |
-| `KeccakMath` | `d16_keccakF`: D16v's relations give `keccakF`; `keccak256_bits_multi`: Keccak-256 of any length is the bit-level sponge |
+| `KeccakMath` | `d16_keccakF`: D16v's relations give `keccakF` on the lanes of the last round's planes made (`D16Rel L`: the last round's χ rows of planes `y < L`); `keccak256_bits_multi`: Keccak-256 of any length is the bit-level sponge |
 | `Gates` | constants; free bits (`b = b²` in the field `K`, so a bit); copies; XORs; `keccak_rel`, `keccak_out`: a checked Keccak-f instance is Keccak-f[1600] on bits |
-| `Sponge` | `sponge_digest`: a checked sponge is Keccak-256 of its message, any number of blocks, `pad10*1` |
+| `Sponge` | `sponge_digest`, `sponge_out`: a checked sponge is Keccak-256's sponge on its message, any number of blocks, `pad10*1`, its output the last state's first `64 · lanes` bits (every block but the last a whole permutation) |
 | `Pack` | `pack_val`: Horner by 15-bit windows is `Σ_e b_e x^e` |
 | `Words` | packings of bits are words; bytes' bits; decoded bytes |
 | `Decode` | `checked_of_compile`, `Graph.eval_step`; the free bits are the decoded stream's and public input's bits |
-| `Nodes` | `node_inv`: by induction over the expanded graph, every live element node's limbs and every live hash's digest carry its value |
+| `Nodes` | `node_inv`: by induction over the expanded graph, every live element node's limbs, every live hash's digest and (read by a wide challenge) rate carry its value (`keccakState_rate_bits`) |
 | `Ports` | `ports_carry` |
 | `Piop` | `Circuit.toPiop`; `satisfied_of_piop`, `satisfied_of_flow`: RecPiop's relation gives `Satisfied` |
 | `Sound` | `compile_sound`: the ports carry the expanded graph's values |
@@ -107,9 +121,10 @@ The Rust compiler asserts the same typing (`assert_typed` in `compile.rs`, with 
 | `SoundRG` | the ports against `RecGraph.evalNodes`, given `ExpandSound` |
 | `WeightSim` | `weightAt_eq_tower`, `weightSym_sim`: the ring switch's weight on `E` and on the recorder's symbols |
 | `ExpandProof` | `expandSound`: the expansion keeps RecGraph's elements, on every accepted graph |
-| `Calls` | `Circuit.callInputs` (π2's rebuild of π1's claims), `pair_val`, `compile_sound_calls`, `compile_sound_callInputs` |
+| `Calls` | `Circuit.callInputs` (π2's rebuild of π1's claims), `encodedCalls`, `pair_val`, `compile_sound_calls`, `compile_sound_callInputs` |
+| `ClaimHash` | `claimEncoding`; a free element's bits are its limbs' (`free_bit_val`, from its zero port); a message bit means its encoding's (`mbit_val`, `word_means`, `aux_means`); `claimHash_port`, `compile_hashed` |
 | `End` | `EndStatement`, `compile_sound_end` |
-| `Complete` | **completeness**: the honest witness (`word`: the words in value order, `layout.rs`'s; `witness`: each position's pulled value's word) satisfies the circuit (`witness_satisfied`) and RecPiop's copy constraints (`witness_copy`) and encodes the public input and the stream (`pubW_witness`, `streamW_witness`), for every public input and stream of the graph's length; `zero_port_sat` (a zero port's limbs on any satisfying witness) |
+| `Complete` | **completeness**: the honest witness (`word`: the words in value order, `layout.rs`'s; `witness`: each position's pulled value's word) satisfies the circuit (`witness_satisfied`) and RecPiop's copy constraints (`witness_copy`) and encodes the public input and the stream (`pubW_witness`, `streamW_witness`), for every public input and stream of the graph's length (a hashed claim's free bits `Given.bit`: the bits of an earlier value's word); `zero_port_sat` (a graph zero port's limbs on any satisfying witness), `claim_zero_port_witness` (the hashed claims' zero ports are zero on the honest witness) |
 
 ### The completeness checks (`Check.lean`: `completeSlots`, `completeValues`, `completeGiven`, `completeCover`)
 
@@ -138,22 +153,28 @@ per IV).
   - the end theorems, for every graph the compiler accepts.
 - **Instantiated by the checker:** a check verifies each template's geometry on the actual circuit. That covers which
   values sit at which cells, which formula sits at each producing slot, and `κ`. Each check runs in compiled code and
-  the theorems use it only through its lemma. The checker accepts π1-rec3's graph and the three small test graphs.
+  the theorems use it only through its lemma. The checker accepts π1-rec4's graph.
 
 ## How the compiler is trusted
 
 - **Transcription.** The compiler is transcribed step by step, in the Rust's order, and compared with the Rust
-  (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit_keccak.rs`). The comparison covers the shape, the region
-  list, the formula tables, the blocks, the ports, the calls, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions.
-  It runs on the Keccak VM's π1-rec3 graph at the 128-signature reference (on `f96a7938`'s PCS-claim graph: 22 blocks,
-  the blocks `RecStatement/Data.lean`'s 134 pairs name), every comparison identical.
+  (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit_keccak.rs`). The comparison covers the shape, the
+  region list, the formula tables, the blocks, the ports (the claims' hashes among them), the encoded calls, the hashed
+  claims, the narrow elements, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions. It runs on the Keccak VM's
+  π1-rec4 graph at the 128-signature reference (10,840 nodes, 16,125 expanded; 15 regions, 30 blocks, 99 ports: 93
+  zero, 2 padding, the statement and 3 claim hashes; no call encoded, no root ported; 22,034 `κ`; 123 Keccak-f, 245
+  last-round planes unmade), every comparison identical: `rec-circuit-diff` (the checked compiler, about 14 minutes on one
+  core; `--raw`, the transcription alone, about a minute) and `rec-circuit-keccak` on `RecGraphKeccak.Emitted.graph`
+  (the very term `pi1rec4K_end` is about) both print the Rust's circuit.
 - **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead: a region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
   724,992 rows pad to 786,432 at both 2 and 3 digits). `RecCircuitTest/PadCounts.lean` compares `padCounts` with the
   Rust on 202 cases (`crates/leanvm/rec/tests/lean_pad_counts.rs`), 33 of them where the look-ahead differs from a
   one-digit greedy.
 - **Checker.** The checker adds no constraint and changes no circuit: a failing check makes `compile` reject the
-  graph.
+  graph. It also refuses what the Rust would compile wrongly or not at all: a claim of fewer than 3 words or more than
+  258, hashed claims out of order, a wide challenge's hash without its rate, a circuit past `2^24` positions
+  (`FIT_LOG_N`).
 - **What is proved.** The theorems are about the Lean compiler's circuits. That the Rust builds the same circuit is
   established by the comparison, not by proof.
 - **Not transcribed:** the witness and the dead slots' check, which concern the honest prover only.
@@ -164,8 +185,9 @@ per IV).
 cd formal/EndToEnd
 systemd-run --scope -p MemoryMax=10G lake build RecCircuit rec-circuit-diff rec-circuit-keccak
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture
-.lake/build/bin/rec-circuit-keccak out/keccak_pi1_rec3.graph > k.emitted.circuit && diff out/keccak_pi1_rec3.circuit k.emitted.circuit
-.lake/build/bin/rec-circuit-diff out/keccak_pi1_rec3.graph > k.lean.circuit && diff out/keccak_pi1_rec3.circuit k.lean.circuit
+.lake/build/bin/rec-circuit-keccak out/keccak_pi1_rec4.graph > k.emitted.circuit && diff out/keccak_pi1_rec4.circuit k.emitted.circuit
+.lake/build/bin/rec-circuit-diff out/keccak_pi1_rec4.graph > k.lean.circuit && diff out/keccak_pi1_rec4.circuit k.lean.circuit
+.lake/build/bin/rec-circuit-diff out/keccak_pi1_rec4.graph --raw   # the transcription alone, about a minute
 lake env lean ../RecCircuit/RecCircuitTest/PadCounts.lean    # padCounts against pad_counts
 ```
 

@@ -23,6 +23,7 @@ import RecCircuit.SoundRG
 import RecCircuit.WeightSim
 import RecCircuit.ExpandProof
 import RecCircuit.Calls
+import RecCircuit.ClaimHash
 import RecCircuit.End
 import RecCircuit.Complete
 
@@ -160,3 +161,15 @@ ones.
 /-- info: 'RecCircuit.Compiled.compile_sound_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCircuit.Compiled.compile_sound_end
+
+/-- info: 'RecCircuit.Compiled.claimHash_port' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCircuit.Compiled.claimHash_port
+
+/-- info: 'RecCircuit.Compiled.free_bit_val' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCircuit.Compiled.free_bit_val
+
+/-- info: 'RecCircuit.Ctx.sponge_out' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCircuit.Ctx.sponge_out

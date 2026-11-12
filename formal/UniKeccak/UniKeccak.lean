@@ -63,3 +63,19 @@ The guards below check that the verifier and every statement rest on Lean's thre
 /-- info: 'UniKeccak.KeccakFlockFits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniKeccak.KeccakFlockFits
+
+/-- info: 'UniKeccak.runK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccak.runK4
+
+/-- info: 'UniKeccak.verifyWithK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccak.verifyWithK4
+
+/-- info: 'UniKeccak.UniKnowledgeSoundnessKeccakRec4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccak.UniKnowledgeSoundnessKeccakRec4
+
+/-- info: 'UniKeccak.UniCompletenessKeccakRec4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccak.UniCompletenessKeccakRec4

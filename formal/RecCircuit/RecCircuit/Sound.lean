@@ -37,20 +37,12 @@ theorem compile_sound_flow {r : Recorded} {c : Compiled} (hc : compile r = .ok c
 
 /-! ## `RecGraph`'s graphs and semantics -/
 
-def ofRGWord : RecGraph.Word → Word
-  | .node id => .node id
-  | .const w => .const w
-  | .stream a => .stream a
-
-/-- **The compiler's input for a `RecGraph` graph**, its roots' offsets and π1's contract IV. -/
-def ofRG (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) : Recorded :=
-  ⟨⟨g.nodes.map ofRGNode, g.zero, g.nonzero, g.kernels, g.calls.map (·.map ofRGWord), g.streamLen⟩, rootsAt, iv⟩
-
 /-- A value of this library's semantics and `RecGraph`'s agree: the same element, or a state and its digest's
 bytes. -/
 def Corr : Value → RecGraph.Value → Prop
   | .e x, .elem y => x = y
   | .state s, .state d => s = digestBytes d
+  | .sponge a, .sponge b => a = b
   | _, _ => False
 
 /-- `RecGraph`'s node values over Keccak-f[1600] (the deployed contract's). -/
@@ -75,18 +67,19 @@ def zeroOrig (c : Compiled) (r : Recorded) (m : ℕ) : ℕ :=
 
 /-- **The zero ports carry `RecGraph`'s values of π1's zero checks** (over Keccak-f[1600]), given the named
 obligation `ExpandFaithful`. -/
-theorem compile_sound_zero {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {c : Compiled}
-    (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_zero {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ} {c : Compiled}
+    (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) (hz : ∀ id ∈ g.zero, id < g.nodes.size)
-    (hE : ExpandFaithful g c (ofRG g rootsAt iv)) :
-    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+    (hE : ExpandFaithful g c (ofRG g rootsAt iv hashed)) :
+    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero → c.claimZeros ≤ c.zeroIndex J →
       c.circuit.portLimbs w J = Compiled.limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J))) := by
-  intro J hJ hsrc
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros))) := by
+  intro J hJ hsrc hcz
   have hchk := Compiled.checked_of_compile hc
   rw [compile_sound hc hw J hJ, Compiled.portMeaning, hsrc]
   simp only
-  set r := ofRG g rootsAt iv
+  rw [if_neg (by omega)]
+  set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (Compiled.graphOk_parts hchk.graph).2.1
   have hso := allBelow_spec hchk.sources J hJ
   simp only [hsrc, decide_eq_true_eq] at hso
@@ -96,16 +89,16 @@ theorem compile_sound_zero {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List 
   have hzn : c.zeroNodes = (r.graph.zero.filter (P ∘ fun id => c.map.getD id 0)).map (fun id => c.map.getD id 0) := by
     unfold Compiled.zeroNodes; rw [hzero, List.filter_map]
   rw [hP] at hzn
-  have hlen : c.zeroIndex J < (r.graph.zero.filter
+  have hlen : c.zeroIndex J - c.claimZeros < (r.graph.zero.filter
       (fun id => Compiled.notConst (c.nodes.getD (c.map.getD id 0) default))).length := by
-    rw [hzn, List.length_map] at hso; exact hso
-  have hget : c.zeroNodes.getD (c.zeroIndex J) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J)) 0 := by
+    rw [hzn, List.length_map] at hso; omega
+  have hget : c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J - c.claimZeros)) 0 := by
     rw [hzn]
     simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hlen,
       Option.map_some, Option.getD_some]
   rw [hget]
-  have hmem : zeroOrig c r (c.zeroIndex J) ∈ g.zero := by
-    have : zeroOrig c r (c.zeroIndex J) ∈ r.graph.zero.filter
+  have hmem : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ g.zero := by
+    have : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ r.graph.zero.filter
         (fun id => Compiled.notConst (c.nodes.getD (c.map.getD id 0) default)) := by
       simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hlen, Option.getD_some]
       exact List.getElem_mem hlen

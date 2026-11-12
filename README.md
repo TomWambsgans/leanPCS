@@ -82,7 +82,7 @@ verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contrac
 | Calldata | 577 B (4 zero): π1's three claims hashed in π2's circuit, no selector | 577 B |
 | Gas (EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,212 execution; standard 40,396, floor 36,928; with the frame (225 B) and `pcs_gas` 12,000: **63,328** (the floor binds) | 35,452 execution; 63,328 |
 | PCS claims | 7: π1's 3, π2's 4 | 7 |
-| Lean 4 | the VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness; the recursion's knowledge soundness as an explicit reduction and its completeness; all of π2 over π1-rec3 at `f96a7938`, not yet ported ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)) | |
+| Lean 4 | the VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness; π1-rec4's graph = its verifier; π2v4's PIOP, circuit compiler and contract model; the recursion's knowledge soundness at the real deployment as an explicit reduction and its completeness under two premises at Keccak-f[1600] ([`formal/README.md`](formal/README.md)) | |
 
 π1 alone as a contract (no recursion) at 128 signatures: 8,065 B of calldata, 231,489 execution; standard 360,169,
 floor 516,160. The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures.

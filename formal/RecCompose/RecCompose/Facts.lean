@@ -29,13 +29,14 @@ the Keccak π1-rec3's compiled circuit (`rec-view-check`: true at π1's referenc
 about 14 minutes an IV; `rec-real-check` evaluates `IvChecked` at those and the all-ones IV), assumed at the others. At
 the real deployment it follows from `RecCompose.IvChecked` (`pi2ViewChecked_real`). -/
 def Pi2ViewChecked {D : RecDeployment} (C : Pi2Circuits D) : Prop :=
-  ∀ iv, iv.length = 32 → viewCheck (C.compiled iv) = true
+  ∀ roots, viewCheck (C.compiled roots) = true
 
 theorem viewCheck_parts {c : RecCircuit.Compiled} (h : viewCheck c = true) :
-    viewOf c.circuit = Data.circuit ∧ callsOf c.circuit = Data.pi1Calls ∧ validB c.circuit = true := by
+    viewOf c.circuit = Data.circuit ∧ callsOf c.circuit = Data.pi1Calls ∧ validB c.circuit = true ∧
+      c.circuit.hashed = Data.hashed := by
   unfold viewCheck at h
-  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-  exact ⟨h.1.1, h.1.2, h.2⟩
+  simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
+  exact ⟨h.1.1.1, h.1.1.2, h.1.2, h.2⟩
 
 /-! ## The public limbs are determined by their fingerprint -/
 
@@ -83,6 +84,25 @@ theorem pubOfC_canon {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : R
     rw [← h0, show pubs.getD 2 0 + F192.Y * pubs.getD 3 0 = F192.ofF64 a2 + F192.Y * F192.ofF64 a3 by
       linear_combination h0 - h1, canon2_ofF64, canon2_ofF64]
     rfl
+  | claimHash i =>
+    rw [hs] at hfp hul
+    obtain ⟨u0, u1, u2, u3, rfl⟩ := RecPiop.list_four (hul.trans rfl)
+    obtain ⟨a0, rfl⟩ := mem_subK (huK u0 (by simp))
+    obtain ⟨a1, rfl⟩ := mem_subK (huK u1 (by simp))
+    obtain ⟨a2, rfl⟩ := mem_subK (huK u2 (by simp))
+    obtain ⟨a3, rfl⟩ := mem_subK (huK u3 (by simp))
+    have h := fun γ ↦ hfp γ
+    simp only [RecCircuit.Source.limbs, pubOfSource] at h
+    have e : ∀ γ, RecPiop.fpList (RecCircuit.portWeights (List.range 4)) γ =
+        RecPiop.fpList (RecPiop.rootLimbs 0 1 2 3 F192.Y) γ := fun γ ↦ rfl
+    simp only [e, RecPiop.fpList_root, canon2_append_fp] at h
+    have h0 := h 0
+    have h1 := h 1
+    simp only [zero_mul, add_zero, one_mul] at h0 h1
+    simp only [pubOfSource]
+    rw [← h0, show pubs.getD (4 + 4 * i + 2) 0 + F192.Y * pubs.getD (4 + 4 * i + 3) 0 = F192.ofF64 a2 + F192.Y * F192.ofF64 a3 by
+      linear_combination h0 - h1, canon2_ofF64, canon2_ofF64]
+    rfl
   | root i =>
     rw [hs] at hfp hul
     obtain ⟨u0, u1, u2, u3, rfl⟩ := RecPiop.list_four (hul.trans rfl)
@@ -99,7 +119,7 @@ theorem pubOfC_canon {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : R
     have h1 := h 1
     simp only [zero_mul, add_zero, one_mul] at h0 h1
     simp only [pubOfSource]
-    rw [← h0, show pubs.getD (4 + 2 * i) 0 = F192.ofF64 a2 + F192.Y * F192.ofF64 a3 by
+    rw [← h0, show pubs.getD (4 + 4 * c.circuit.hashed.length + 2 * i) 0 = F192.ofF64 a2 + F192.Y * F192.ofF64 a3 by
       linear_combination h0 - h1, canon2_ofF64, canon2_ofF64]
     rfl
   | element i =>
@@ -112,10 +132,10 @@ theorem pubOfC_canon {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : R
     simp only [RecCircuit.Source.limbs, pubOfSource] at h
     have e : RecPiop.fpList (RecCircuit.portWeights (List.range 3)) 0 =
         RecPiop.fpList (RecPiop.elemLimbs 0 1 2 F192.Y) 0 := rfl
-    have hx := limbs3_fp (pubs.getD (4 + 2 * (publicCounts c.circuit).1 + i) 0)
+    have hx := limbs3_fp (pubs.getD (4 + 4 * c.circuit.hashed.length + 2 * (publicCounts c.circuit).1 + i) 0)
     simp only [limbs3, List.getD_cons_zero, List.getD_cons_succ] at hx
     rw [e, RecPiop.fpList_elem, limbs3, RecPiop.fpList_elem, hx] at h
-    have hl : F192.ofLimbs a0 a1 a2 = pubs.getD (4 + 2 * (publicCounts c.circuit).1 + i) 0 := by
+    have hl : F192.ofLimbs a0 a1 a2 = pubs.getD (4 + 4 * c.circuit.hashed.length + 2 * (publicCounts c.circuit).1 + i) 0 := by
       rw [F192.ofLimbs_eq, ← h]
       ring
     simp only [pubOfSource, limbs3, ← hl, F192.limb_ofLimbs_zero, F192.limb_ofLimbs_one, F192.limb_ofLimbs_two]
@@ -169,27 +189,28 @@ variable {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewCh
 include hchk in
 /-- The view check at a setup. -/
 theorem viewChecked_at (roots : RecSetupRoots) :
-    viewOf (C.compiled (D.pi1IvAt roots.pi1)).circuit = Data.circuit ∧
-      callsOf (C.compiled (D.pi1IvAt roots.pi1)).circuit = Data.pi1Calls ∧
-      validB (C.compiled (D.pi1IvAt roots.pi1)).circuit = true :=
-  viewCheck_parts (hchk _ (D.pi1IvAt_length roots.pi1))
+    viewOf (C.compiled roots.pi1).circuit = Data.circuit ∧
+      callsOf (C.compiled roots.pi1).circuit = Data.pi1Calls ∧
+      validB (C.compiled roots.pi1).circuit = true ∧ (C.compiled roots.pi1).circuit.hashed = Data.hashed :=
+  viewCheck_parts (hchk roots.pi1)
 
 include hchk in
 /-- Four limbs at port `j` exactly when `Data`'s term `j` has two or four terms. -/
-theorem four_sum (roots : RecSetupRoots) : ∑ j ∈ range (C.G roots).nP, C.d roots j = 3 := by
-  obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
+theorem four_sum (roots : RecSetupRoots) : ∑ j ∈ range (C.G roots).nP, C.d roots j = 4 := by
+  obtain ⟨hview, -, -, hhash⟩ := viewChecked_at C hchk roots
   have hports := viewOf_ports hview
   have hroots := viewOf_roots hview
   have hterms := viewOf_terms hview
-  have hnP : (C.G roots).nP = 38 := by
-    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 38
+  have hhl : (C.compiled roots.pi1).circuit.hashed.length = 3 := by rw [hhash]; rfl
+  have hnP : (C.G roots).nP = 99 := by
+    show ((C.compiled roots.pi1).circuit.ports.toList.map (·.position)).length = 99
     rw [List.length_map, Array.length_toList, hports]
   rw [hnP, ← data_four, list_range_sum_nat]
   refine Finset.sum_congr rfl fun j hj ↦ ?_
-  have hj' : j < 38 := Finset.mem_range.mp hj
-  rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj'), hroots]
+  have hj' : j < 99 := Finset.mem_range.mp hj
+  rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj'), hroots, hhl]
   unfold Pi2Circuits.d
-  have key := termOf_length_four 2 ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD j default).source
+  have key := termOf_length_four 3 0 ((C.compiled roots.pi1).circuit.ports.getD j default).source
   split_ifs with h1 h2 h2
   · rfl
   · exact absurd (key.mp h1) h2
@@ -199,14 +220,14 @@ theorem four_sum (roots : RecSetupRoots) : ∑ j ∈ range (C.G roots).nP, C.d r
 include hD hchk in
 /-- **`Pi2Facts` at the real deployment**, from the compiled circuits and the view check. -/
 def pi2Facts : Pi2Facts D C where
-  pairOf roots := pairOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit
-  portOf _ J := 16 + J
-  pubOf roots := pubOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit
+  pairOf roots := pairOfC (C.compiled roots.pi1).circuit
+  portOf _ J := 92 + J
+  pubOf roots := pubOfC (C.compiled roots.pi1).circuit
   spec roots := by
-    obtain ⟨hview, -, hval⟩ := viewChecked_at C hchk roots
+    obtain ⟨hview, -, hval, hhash⟩ := viewChecked_at C hchk roots
     rw [show (D.circuitAt roots.pi1).circuit = Data.circuit from hD.1 _]
-    exact specOf_data (C.compile_okAt roots.pi1) hview (validB_sound hval)
-  valid roots := validB_sound (viewChecked_at C hchk roots).2.2
+    exact specOf_data (C.compile_okAt roots.pi1) hview (validB_sound hval) hhash
+  valid roots := validB_sound (viewChecked_at C hchk roots).2.2.1
   logN roots := viewOf_logN (viewChecked_at C hchk roots).1
   logW roots := viewOf_logW (viewChecked_at C hchk roots).1
   four roots := four_sum C hchk roots
@@ -218,7 +239,7 @@ def pi2Facts : Pi2Facts D C where
 /-- **`pi2Facts`' public limbs**: `pubOfC` of the compiled circuit (by port source: the statement's words and a root's
 halves as `canon2` pairs, an element's three limbs, zeros). -/
 theorem pi2Facts_pubOf (roots : RecSetupRoots) :
-    (pi2Facts hD C hchk).pubOf roots = pubOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit := rfl
+    (pi2Facts hD C hchk).pubOf roots = pubOfC (C.compiled roots.pi1).circuit := rfl
 
 end Facts
 

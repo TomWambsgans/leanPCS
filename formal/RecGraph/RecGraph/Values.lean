@@ -59,6 +59,9 @@ theorem valE_congr {P V : Array Value} {j : Nat} (h : P[j]? = V[j]?) : valE P j 
 theorem valState_congr {P V : Array Value} {j : Nat} (h : P[j]? = V[j]?) : valState P j = valState V j := by
   simp only [valState, h]
 
+theorem valRate_congr {P V : Array Value} {j : Nat} (h : P[j]? = V[j]?) : valRate P j = valRate V j := by
+  simp only [valRate, h]
+
 /-- A node's value depends on the values it reads only. -/
 theorem stepP_local (K : Array (List Nat)) (P V : Array Value) (n : Node) (i : Nat)
     (hr : ∀ a ∈ reads K n, a < i) (hag : ∀ j < i, P[j]? = V[j]?) :
@@ -80,6 +83,9 @@ theorem stepP_local (K : Array (List Nat)) (P V : Array Value) (n : Node) (i : N
   | narrow h =>
     simp only [reads, Node.operands, List.mem_cons, List.mem_nil_iff, or_false] at e
     simp only [stepP, stepNode, valState_congr (e h rfl)]
+  | wide h k =>
+    simp only [reads, Node.operands, List.mem_cons, List.mem_nil_iff, or_false] at e
+    simp only [stepP, stepNode, valRate_congr (e h rfl)]
   | bits v s w =>
     simp only [reads, Node.operands, List.mem_cons, List.mem_nil_iff, or_false] at e
     simp only [stepP, stepNode, valE_congr (e v rfl)]
@@ -419,6 +425,34 @@ theorem afterHash_val (st : RecState) (h : RecInv st) :
   simp only [afterHash, valState, this]
   rfl
 
+/-- **The sponge after a sample's hash**: Keccak-256's last state over `π` of the state's bytes and the stream's bytes
+read since the last challenge; its rate is the wide draw's. -/
+theorem afterHash_rate (st : RecState) (h : RecInv st) :
+    valRate (evalAll π iv publicInput stream (afterHash st)) (afterHash st).state =
+      rateBytesOf (Id.run (keccak256StateWith (m := Id) (fun s ↦ pure (π s))
+        (digestBytes (valState (evalAll π iv publicInput stream st) st.state) ++
+          (stream.extract st.absorbed st.cursor).toList))) := by
+  have := new_val π iv publicInput stream st h (.hash st.state st.absorbed st.cursor)
+    (by simp only [reads, Node.operands, List.mem_singleton]; rintro a rfl; exact h.state)
+  have e : evalAll π iv publicInput stream (afterHash st) =
+      evalAll π iv publicInput stream (st.new (.hash st.state st.absorbed st.cursor)).2 := rfl
+  rw [e]
+  simp only [afterHash, valRate, this]
+  rfl
+
+/-- **A wide draw's challenge `k`**: challenge `k` of the state's rate (`wide` reads the state's node). -/
+theorem wide_val (st : RecState) (h : RecInv st) (k : Nat) :
+    valE (evalAll π iv publicInput stream (st.wide k).2) (st.wide k).1 =
+      challengeAt (valRate (evalAll π iv publicInput stream st) st.state) k := by
+  unfold RecState.wide
+  rw [valE, new_val π iv publicInput stream st h _ (by
+    simp only [reads, Node.operands, List.mem_singleton]; rintro a rfl; exact h.state)]
+  rfl
+
+theorem wide_inv (st : RecState) (h : RecInv st) (k : Nat) : RecInv (st.wide k).2 :=
+  new_inv st h _ (by simp only [reads, Node.operands, List.mem_singleton]; rintro a rfl; exact h.state)
+    fun _ ⟨_, e⟩ ↦ by cases e
+
 theorem sample_eq (st : RecState) (narrow : Bool) :
     st.sample narrow = (afterHash st).new (if narrow then .narrow (afterHash st).state else .low (afterHash st).state) :=
   rfl
@@ -540,6 +574,7 @@ def Op.value (st : RecState) (vals : Array Value) : Op → E
   | .sample narrow => (if narrow then narrowE else id) (PcsQuotient.Transcript.challengeOf
       (Id.run (keccak256With (m := Id) (fun s ↦ pure (π s))
         (digestBytes (valState vals st.state) ++ (stream.extract st.absorbed st.cursor).toList))))
+  | .wide k => challengeAt (valRate vals st.state) k
   | .add a b => valE vals a + valE vals b
   | .mul a b => valE vals a * valE vals b
   | .bits v s w => bitsValue (valE vals v) s w
@@ -557,6 +592,7 @@ theorem op_val (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) :
   | sample narrow =>
     simp only [RecState.op, Op.value]
     rw [sample_val π iv publicInput stream st h narrow, afterHash_val π iv publicInput stream st h]
+  | wide k => exact wide_val π iv publicInput stream st h k
   | add a b => exact add_val π iv publicInput stream st h a b hok.1 hok.2
   | mul a b => exact mul_val π iv publicInput stream st h a b hok.1 hok.2
   | bits v s w => exact bits_val π iv publicInput stream st h v s w hok
@@ -569,6 +605,7 @@ theorem op_inv (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) : RecI
   | statement k => exact statement_inv st h k
   | input len => exact input_inv st h len
   | sample narrow => exact sample_inv st h narrow
+  | wide k => exact wide_inv st h k
   | add a b => exact add_inv st h a b hok.1 hok.2
   | mul a b => exact mul_inv st h a b hok.1 hok.2
   | bits v s w => exact bits_inv st h v s w hok
@@ -604,6 +641,7 @@ theorem op_lt (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) : (st.o
   | constant x => exact new_lt st h _
   | statement k => exact new_lt st h _
   | input len => exact new_lt st h _
+  | wide k => exact new_lt st h _
   | sample narrow =>
     show (st.sample narrow).1 < (st.sample narrow).2.nodes.size
     rw [sample_eq]

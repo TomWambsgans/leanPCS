@@ -1,14 +1,14 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`reduce`'s arithmetic after the transcript: `coeff`, `lin`, `formula`, the digits, the row's cells by the
 -- siblings' fold, the blocks' `Ẑ_s(t)`, the groups' fractions, the ports' `Φ_k` by rows, the internal pushes' and the
--- ports' fractions, the identity, the one inversion, the claims), π2v3 (`leanvm-rec-pi2v3`: π2v2's PIOP on the
--- EIP's plain point claims, `stack_vars`). `sq` is
+-- ports' fractions, the identity, the one inversion, the claims), π2v4 (`leanvm-rec-pi2v4`, main 7e6d353c: `Q`'s two
+-- claims, the copy sum from `Q`'s layout; `stack_vars`). `sq` is
 -- `formal/QuotientSecurity`'s (`Cantor.lean`).
 import Mathlib.Algebra.Field.Basic
 import QuotientSecurity.Cantor
 
 /-!
-# The verifier's arithmetic at `t`, over any field (π2v3)
+# The verifier's arithmetic at `t`, over any field (π2v4)
 
 `pi2::verifier::reduce` after it has read the stream and drawn its challenges: a function of the public scalars,
 `α, β, γ, t`, the fold values `a_k`, `ξ`, `s` and `ρ`, **generic in the field** as the Rust is generic in its
@@ -16,7 +16,7 @@ import QuotientSecurity.Cantor
 what it computes over any field of characteristic two). Every intermediate value is a field of `Out`, in the Rust's
 order (`PI2.md` §2, steps 1–7):
 
-1. the digits `w_0 … w_{m+1}`, `w_{l+1} = w_l² + w_l` (`sq`);
+1. the digits `w_0 … w_m`, `w_{l+1} = w_l² + w_l` (`sq`);
 2. the row's cells `v_c` by the siblings' fold (`cellsList`, `PI2.md` §9 lever 3a: the odd child is the even one
    plus the difference);
 3. `Ẑ_s(t)` for every block size (`zHat`), each group's indicators summed as one fraction `N_g/D_g`
@@ -24,12 +24,13 @@ order (`PI2.md` §2, steps 1–7):
 4. the ports' `Φ_k(t)/w_m = G_n/G_d = Σ_J F_J/(w_r + ω_{y_J})` for each port role (`phiFrac`);
 5. the internal pushes' `A/B` over the pulling groups and the ports' `R_n/R_d = Σ_g (N_g/D_g)(E_g + Δ + Φ_k)` over
    the pull-less ones (`pushSums`), `Δ = d_pull + d_push`, `d_pull = α + v_0 + βt`, `d_push = α + s + ξ`;
-6. `D_n`, `num_1`, `num_3`; the one inversion of `R_d Y · w_{m+1} · B · c_h D_n`; the digits' inverses down from
-   `1/w_{m+1}`;
+6. `D_n`, `num_1`, `num_3`; `Y_1 = c_h + t w_m`, `Y_2 = c_h + t w_m²`, `Y_3 = 1 + ρ (1 + w_m)`; the one inversion of
+   `R_d Y_1 Y_2 · B · w_m · Y_3 · c_h D_n`; the digits' inverses down from `1/w_m`;
 7. the claims, each a point of its stack (`stackVars`; past the table's coordinates, zeros): `W` at
-   `(ρ, ρ², …, w_r, …, w_{m−1})` (`foldAt`'s value), the setup at `(w_0, …, w_{m−1}, β)`, `Q` at `(u_0, …, u_m, ρ',
-   y_0, y_1)` (the identity's, weighing `P` and `q_P` by `c_3 = y_0 y_1/L_0`), at `(u_0, …, u_m, ρ, 1, 1)` (the
-   pushes') and at `(1^m, 0, 0, y_0, y_1)` (the top coefficient, value `0`).
+   `(ρ, ρ², …, w_r, …, w_{m−1})` (`foldAt`'s value), the setup at `(w_0, …, w_{m−1}, β)`, `Q` at `(u_0, …, u_{m−1},
+   z_0, z_1, y_0, y_1)`, `z_0 = t w_m/Y_1`, `z_1 = t w_m²/Y_2` (the identity's: `H + a q + a r_1 G` and, by `Y³`,
+   `P + a q_P + a r_1 S`, `a = t w_m/c_h`, `r_1 = a w_m`), and at `(u_0, …, u_{m−1}, ρ, z'_1, 1, 1)`, `z'_1 = ρ w_m/Y_3`
+   (the pushes': `P + a' q_P + a' r'_1 S`, `a' = ρ/(1 + ρ)`, `r'_1 = a' w_m`). No sum claim (`PI2.md` §7).
 
 **Deviations, none changing a value**: the Rust skips a product by a coefficient equal to one and, for a one-pair
 group, its numerator `1` (here the products are taken: `1 · x = x`); `γ^g` is read from the list of powers as the
@@ -102,6 +103,8 @@ structure CoreSpec (F : Type) where
   y0 : F
   y1 : F
   scale : F
+  /-- `Y³`, limb code `3`'s weight at `(y_0, y_1)` over the scale (`F192::Y` cubed). -/
+  yCube : F
   ω : ℕ → F
 
 /-- The largest block's rows' log. -/
@@ -230,21 +233,34 @@ structure Out (F : Type) where
   dPush : F
   delta : F
   ch : F
-  y : F
+  tz : F
+  y1 : F
+  y2 : F
+  y3 : F
   dN : F
   num1 : F
   num3 : F
   p1 : F
   p2 : F
   p3 : F
+  p4 : F
+  p5 : F
   cd : F
   all : F
   invAll : F
+  invP5 : F
+  invY3 : F
+  invP4 : F
+  invZ : F
   invP3 : F
   invP2 : F
-  invTop : F
-  rhoQ : F
+  invY2 : F
+  invP1 : F
+  invY1 : F
   wInvs : List F
+  z0 : F
+  z1 : F
+  zp1 : F
   quotientValue : F
   pushesValue : F
   uList : List F
@@ -253,8 +269,6 @@ structure Out (F : Type) where
   witnessPoint : List F
   quotientPoint : List F
   pushesPoint : List F
-  sumPoint : List F
-  sumValue : F
   setupPoint : List F
 
 /-- `1/w_l = (1 + w_l)/w_{l+1}` down from `1/w_top`: the list `1/w_0, …, 1/w_top`. -/
@@ -271,14 +285,13 @@ def CoreSpec.run (S : CoreSpec F) (inp : Inputs F) : Out F :=
   let m := S.logN
   let r := S.logRow
   let t := inp.t
-  let w := digitsList t (m + 2)
+  let w := digitsList t (m + 1)
   let cells := cellsList S.ω w r inp.a
   let v0 := cells.getD 0 0
   let zt := (List.range (S.maxLogRows + 1)).map fun s ↦ zHat S.c s t
   let fracs := S.groups.map fun g ↦ fraction (groupDens S zt g)
   let gs := powersList inp.γ (S.maxGamma + 1)
   let wm := w.getD m 0
-  let wTop := w.getD (m + 1) 0
   let phis := S.phi.map fun kt ↦ (kt.1, phiFrac S.ω gs inp.scalars (w.getD r 0) kt.2)
   let dPull := inp.α + v0 + inp.β * t
   let dPush := inp.α + inp.s + inp.ξ
@@ -286,29 +299,38 @@ def CoreSpec.run (S : CoreSpec F) (inp : Inputs F) : Out F :=
   let wPhi := phis.map fun knd ↦ (knd.1, wm * knd.2.1, knd.2.2)
   let (num, den, rNum, rDen) := pushSums S gs cells v0 delta wPhi fracs
   let ch := dPull * dPush
-  let y := ch + wm
+  let tz := t * wm
+  let y1 := ch + tz
+  let y2 := ch + tz * wm
+  let y3 := 1 + inp.ρ + inp.ρ * wm
   let dN := (inp.α + v0 + inp.ξ) * den + wm * num
   let num1 := delta * rDen + wm * rNum
   let num3 := dN + dPush * den
-  let p1 := rDen * y
-  let p2 := p1 * wTop
+  let p1 := rDen * y1
+  let p2 := p1 * y2
   let p3 := p2 * den
+  let p4 := p3 * wm
+  let p5 := p4 * y3
   let cd := ch * dN
-  let all := p3 * cd
+  let all := p5 * cd
   let invAll := all⁻¹
-  let invP3 := invAll * cd
+  let invP5 := invAll * cd
+  let invY3 := invP5 * p4
+  let invP4 := invP5 * y3
+  let invZ := invP4 * p3
+  let invP3 := invP4 * wm
   let invP2 := invP3 * den
-  let invTop := invP2 * p1
-  let rhoQ := wm * (invP2 * (rDen * wTop))
-  let wInvs := wInvsList w (m + 1) invTop
-  let l0 := (1 + S.y0) * (1 + S.y1)
-  let c3 := S.y0 * S.y1 * l0⁻¹
-  let scaleL0 := S.scale * l0⁻¹
-  let st := S.scale * t
-  let quotientValue := st * invP3 * (num1 * den + c3 * (rDen * (ch * (wm * (inp.s * den)) + num3)))
-  let pushesValue := scaleL0 * t * ((1 + inp.ρ) * (wm * wm * (inp.s * den)) + inp.ρ * num3) * (invP3 * p1) *
-    wInvs.getD m 0
-  let uList := (List.range (m + 1)).map fun l ↦ 1 + wInvs.getD l 0 + wInvs.getD (l + 1) 0
+  let invY2 := invP2 * p1
+  let invP1 := invP2 * y2
+  let invY1 := invP1 * rDen
+  let wInvs := wInvsList w m invZ
+  let z0 := tz * invY1
+  let z1 := tz * wm * invY2
+  let zp1 := inp.ρ * wm * invY3
+  let quotientValue := S.scale * t * ch * (t * (num1 * den) + S.yCube * (rDen * (ch * (inp.s * den) + t * num3))) *
+    invP4
+  let pushesValue := t * (1 + inp.ρ) * ((1 + inp.ρ) * (wm * (inp.s * den)) + inp.ρ * num3) * (invP5 * p2) * invZ
+  let uList := (List.range m).map fun l ↦ 1 + wInvs.getD l 0 + wInvs.getD (l + 1) 0
   let vars := stackVars m
   let rhos := (List.range r).map fun l ↦ sqIter inp.ρ l
   { digits := w
@@ -324,31 +346,42 @@ def CoreSpec.run (S : CoreSpec F) (inp : Inputs F) : Out F :=
     dPush := dPush
     delta := delta
     ch := ch
-    y := y
+    tz := tz
+    y1 := y1
+    y2 := y2
+    y3 := y3
     dN := dN
     num1 := num1
     num3 := num3
     p1 := p1
     p2 := p2
     p3 := p3
+    p4 := p4
+    p5 := p5
     cd := cd
     all := all
     invAll := invAll
+    invP5 := invP5
+    invY3 := invY3
+    invP4 := invP4
+    invZ := invZ
     invP3 := invP3
     invP2 := invP2
-    invTop := invTop
-    rhoQ := rhoQ
+    invY2 := invY2
+    invP1 := invP1
+    invY1 := invY1
     wInvs := wInvs
+    z0 := z0
+    z1 := z1
+    zp1 := zp1
     quotientValue := quotientValue
     pushesValue := pushesValue
     uList := uList
     rhos := rhos
     fold := foldW rhos r inp.a
     witnessPoint := padded (rhos ++ (w.drop r).take (m - r)) vars.1
-    quotientPoint := padded (uList ++ [rhoQ, S.y0, S.y1]) vars.2.1
-    pushesPoint := padded (uList ++ [inp.ρ, 1, 1]) vars.2.1
-    sumPoint := padded (List.replicate m 1 ++ [0, 0] ++ [S.y0, S.y1]) vars.2.1
-    sumValue := 0
+    quotientPoint := padded (uList ++ [z0, z1, S.y0, S.y1]) vars.2.1
+    pushesPoint := padded (uList ++ [inp.ρ, zp1, 1, 1]) vars.2.1
     setupPoint := padded (w.take m ++ [inp.β]) vars.2.2 }
 
 end RecStatement

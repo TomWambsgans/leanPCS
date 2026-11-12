@@ -41,9 +41,9 @@ theorem record_op (o : Op) (st : RecState) : (Pi1.op o).record st = st.op o := r
 
 /-! ## Challenge nodes and freshness -/
 
-/-- A challenge node (`low`, `narrow`). -/
+/-- A challenge node (`low`, `narrow`, `wide`). -/
 def isChal : Node → Bool
-  | .low _ | .narrow _ => true
+  | .low _ | .narrow _ | .wide _ _ => true
   | _ => false
 
 /-- The challenge nodes, in creation order. -/

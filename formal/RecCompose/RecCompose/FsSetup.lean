@@ -9,14 +9,14 @@ import UniKeccakSound.Fs.SetupK
 # π2's setup: its facts, its opening, and the bridge
 
 The composed setup `p2Setup` (`FsDefs.lean`: π1's one tree, the Keccak setup stack's `UniKeccakSound.setupK1`, its
-root; then π2's tree of the setup's table `κ`, `κ + σ` at π1's contract IV of that root, on the plain shape of
+root; then π2's tree of the setup's table `κ`, `κ + σ` of π2's circuit at that setup commitment, on the plain shape of
 `2^25` words `sh25`):
 
 * **its facts** for `Compose.rpm_le_kcS` and `Compose.knowledgeSoundness_listChainU_closed128SG`: Keccak-256 only
   (`hOnly_p2Setup`), `p2QS` queries (`isTotalQueryBound_p2Setup`; `p2QS_le`: below `3 · 2^24 + 2^21`, the bound the
   numbers take; π1's one tree has at most `2^24` queries, `UniKeccakSound.setupQSK_le`), each short
   (`cost_p2Setup`), its log and value (`p2Setup_run`), and no query a label (`p2Setup_noLabel`: every query is a
-  Merkle node of `64` bytes or a leaf of `512`, a label has `80`);
+  Merkle node of `64` bytes or a leaf of `512`, a label has `176`);
 * **the setup opening's `OKP`** (`okp_setupOp`): with the setup's queries in the history, the word under π2's setup
   root (the proof's, which the setup fixes) is the honest encoding of the setup's table at the proof's commitments
   (`extract_wiringSetup`, `honest_stackWord`); the other openings carry no stack (`p2Stk_none`);
@@ -165,12 +165,12 @@ theorem allQT_p2Setup : AllQueriesSatisfy (p2Setup D hs) TreeQ := by
     fun _ ↦ trivial
 
 /-- **No query of the setup is a label**: its queries are Merkle nodes (`64` bytes) and leaves (`512`), a label
-`name ‖ iv ‖ input` has `80`. -/
+`name ‖ iv ‖ input ‖ frame words` has `176`. -/
 theorem p2Setup_noLabel : ∀ (T : KTable) (x : List UInt8),
     Sum.inl x ∈ (tableQueryLog (p2Setup D hs) T).map Sigma.fst → ∀ s, x ≠ pi2Spec.label s := by
   intro T x hx s hxs
   have h := tableQueryLog_allQ TreeQ (p2Setup D hs) (allQT_p2Setup D hs) T _ hx
-  have hl : x.length = 80 := by rw [hxs]; exact p2Label_length s
+  have hl : x.length = 176 := by rw [hxs]; exact p2Label_length s
   simp only [TreeQ] at h
   omega
 
@@ -182,9 +182,8 @@ section Opening
 
 variable (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
-/-- The setup's opening (`p2Pcs5`'s fifth). -/
-noncomputable abbrev setupOp : GOp P2Pf E Stk :=
-  PcsOp.gop ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup, .setup (fun π => toB π.roots.pi2) (col0 _)⟩
+/-- The setup's opening (`p2Ops`' second). -/
+noncomputable abbrev setupOp : GOp P2Pf E Stk := sPcs.gop
 
 /-- **The setup's opening carries the setup's table at the proof's commitments.** -/
 theorem p2Stk_setup : p2Stk D (setupOp) = some fun π => setupCol D π.roots.pi1 := by

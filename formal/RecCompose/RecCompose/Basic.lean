@@ -40,7 +40,7 @@ abbrev cls : List (List (List UInt8)) := z.2.2.2.2
 
 end Outcome
 
-/-- **The setup commitment the Keccak π1-rec3's graph was recorded at** (`RecGraphKeccak.verifierOutputsWithK …
+/-- **The setup commitment the Keccak π1-rec4's graph was recorded at** (`RecGraphKeccak.verifierOutputsWithK …
 keccak128 referenceRootsK`: the graph's setup claim holds its `F` root and out-of-domain answer as constants, which the
 contract replaces by the setup's). The one name every RecCompose file uses for it, so that a change of the reference
 commitment is a change here. -/
@@ -74,56 +74,49 @@ abbrev outcomeCandidates (D : RecDeployment) (z : RecOutcome2) : List (Vector K 
 theorem recExtractFrom2_eq (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
     (pre : Digest → ℕ → Option (List UInt8)) (proof : RecProof) :
     recExtractFrom2 D roots input pre proof =
-      match pi1OpsOf D roots input proof.stream with
-      | none => none
-      | some ops => (wCandidates D roots pre proof).findSome? fun w ↦
-          if pi1GraphAcceptsB (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w)) ops then
-            some (D.pi1Stream (witnessOf D roots w)) else none := rfl
+      (wCandidates D roots pre proof).findSome? fun w ↦
+        if pi1GraphAcceptsB (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w))
+            proof.pi1Claims then
+          some (D.pi1Stream (witnessOf D roots w)) else none := rfl
 
 /-! ## `Pi1GraphAccepts`, decided -/
 
-theorem pi1GraphAcceptsB_iff (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8)
-    (ops : List Pi1Opening) : pi1GraphAcceptsB iv1 input s ops = true ↔ Pi1GraphAccepts iv1 input s ops := by
+theorem pi1GraphAcceptsB_iff (g : RecGraph.Graph) (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8)
+    (ds : List (List (List UInt8))) : pi1GraphAcceptsB g iv1 input s ds = true ↔ Pi1GraphAccepts g iv1 input s ds := by
   unfold pi1GraphAcceptsB Pi1GraphAccepts
   constructor
   · intro h
     split at h
     · exact absurd h Bool.false_ne_true
     · rename_i out hout
-      simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at h
-      obtain ⟨⟨hz, hnz⟩, hc⟩ := h
-      split at hc
-      · exact absurd hc Bool.false_ne_true
-      · rename_i gops hg
-        simp only [decide_eq_true_eq] at hc
-        exact ⟨out, gops, hout, hz, hnz, hg, hc.1, hc.2⟩
-  · rintro ⟨out, gops, hout, hz, hnz, hg, h1, h2⟩
+      simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, List.mem_range] at h
+      obtain ⟨⟨⟨hz, hnz⟩, hl⟩, hc⟩ := h
+      exact ⟨out, hout, hz, hnz, hl, hc⟩
+  · rintro ⟨out, hout, hz, hnz, hl, hc⟩
     rw [hout]
-    simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq, bne_iff_ne, ne_eq]
-    refine ⟨⟨hz, hnz⟩, ?_⟩
-    rw [hg]
-    simp only [decide_eq_true_eq]
-    exact ⟨h1, h2⟩
+    simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, List.mem_range]
+    exact ⟨⟨⟨hz, hnz⟩, hl⟩, hc⟩
 
-/-- **The extractor finds a stream as soon as one candidate's is accepted**: with the contract's π1 openings `ops`
-read off the calldata, a candidate whose π1 stream π1-rec3's graph accepts with them makes the extractor output an
+/-- **The extractor finds a stream as soon as one candidate's is accepted**: a candidate whose π1 stream π1-rec4's
+graph at π1's setup commitment accepts with claims hashing to the declared ones makes the extractor output an
 accepted stream (the first such). -/
 theorem recExtractFrom2_of_mem (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
-    (pre : Digest → ℕ → Option (List UInt8)) (proof : RecProof) (ops : List Pi1Opening)
-    (hops : pi1OpsOf D roots input proof.stream = some ops) (w : Vector K (2 ^ wVars D roots))
+    (pre : Digest → ℕ → Option (List UInt8)) (proof : RecProof) (w : Vector K (2 ^ wVars D roots))
     (hw : w ∈ wCandidates D roots pre proof)
-    (hacc : Pi1GraphAccepts (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w)) ops) :
-    ∃ s, recExtractFrom2 D roots input pre proof = some s ∧ Pi1GraphAccepts (D.pi1IvAt roots.pi1) input s ops := by
-  rw [recExtractFrom2_eq, hops]
-  simp only
+    (hacc : Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w))
+      proof.pi1Claims) :
+    ∃ s, recExtractFrom2 D roots input pre proof = some s ∧
+      Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input s proof.pi1Claims := by
+  rw [recExtractFrom2_eq]
   set f : Vector K (2 ^ wVars D roots) → Option (Array UInt8) := fun w ↦
-    if pi1GraphAcceptsB (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w)) ops then
+    if pi1GraphAcceptsB (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w))
+        proof.pi1Claims then
       some (D.pi1Stream (witnessOf D roots w)) else none with hf
   cases h : (wCandidates D roots pre proof).findSome? f with
   | none =>
     have := List.findSome?_eq_none_iff.mp h w hw
     rw [hf] at this
-    simp only [(pi1GraphAcceptsB_iff _ _ _ _).mpr hacc, ite_true] at this
+    simp only [(pi1GraphAcceptsB_iff _ _ _ _ _).mpr hacc, ite_true] at this
     exact absurd this (Option.some_ne_none _)
   | some s =>
     refine ⟨s, rfl, ?_⟩
@@ -133,7 +126,7 @@ theorem recExtractFrom2_of_mem (D : RecDeployment) (roots : RecSetupRoots) (inpu
     split at hw'
     · rename_i hb
       cases Option.some.inj hw'
-      exact (pi1GraphAcceptsB_iff _ _ _ _).mp hb
+      exact (pi1GraphAcceptsB_iff _ _ _ _ _).mp hb
     · exact absurd hw' (by simp)
 
 end RecCompose

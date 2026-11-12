@@ -1,24 +1,24 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `α`'s freshness at π2's staged run (`Pi2ProbStaged`'s
--- `pi2Staged`, `stageA`) for π1-rec3's prover (`Pi2P1`'s named facts), from `Pi2AlphaLen` (the census before `σ`'s hash),
--- `Pi2AlphaChain` (the chain from `σ` to `α`) and `Pi2AlphaSupport` (the graph's verdict on every outcome); uses leanerVM
--- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls,
--- their lazy random oracles, the block cost.
+-- `pi2Staged`, `stageA`) for π1-rec4's prover (`Pi2P1`'s named facts), from `Pi2AlphaLen` (the census before `σ`'s hash),
+-- `Pi2AlphaChain` (the chain from `σ` to `α`) and `Pi2AlphaSupport` (`α`'s input's length on every outcome); uses
+-- leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two
+-- calls, their lazy random oracles, the block cost.
 import RecCompose.Pi2AlphaLen
 import RecCompose.Pi2AlphaSupport
-import RecCompose.Pi2Witness
 
 /-!
-# `α`'s input is fresh at π1-rec3's prover
+# `α`'s input is fresh at π1-rec4's prover (π2v4)
 
 **`alphaFresh_of`**: in the two-call random-oracle model, after stage A of π2's staged run at a π1 prover `P1k` of at
 most `2^47` block calls (`Pi1Cost`) hashing only inputs shorter than `2^26` bytes (`Pi1HashShort`), `α`'s input is
-cached while π1-rec3's graph accepted (`GAcc`) with probability at most
+cached while π1-rec4's graph accepted (`GAccA`) with probability at most
 
   `alphaBound = 4 · (2 · setupR + 2^47 + 3 · gOpen + 4) / 2^256 ≤ 2^-204` (**`alphaBound_le`**).
 
-The proof: with `GAcc`, `α`'s input is the writer's `608` bytes (`gAcc_length`), so it suffices to bound their being
-cached (**`prA_le`**). Stage A is the setup, π1-rec3's prover, its graph, the setup again (every input shorter than
-`2^26` bytes: `Pi2AlphaLen` and `Pi1HashShort`, at most `2 · setupR + 2^47 + 3 · gOpen` hashed inputs), then π2's IV, its seed and `W`'s
+The proof: with `GAccA`, `α`'s input is the writer's `88` bytes (`gAcc_length`), so it suffices to bound their being
+cached (**`prA_le`**). Stage A is the setup, π1-rec4's prover, its graph, the setup again (every input shorter than
+`2^26` bytes: `Pi2AlphaLen` and `Pi1HashShort`, at most `2 · setupR + 2^47 + 3 · gOpen` hashed inputs), then π2's IV,
+its seed (`80` bytes and the frame words: `176` on an honest witness, `80` otherwise, `frameWords_choice`) and `W`'s
 tree: `Pi2AlphaChain.chain_le` from `σ`'s `2^26` bytes, not cached.
 -/
 
@@ -70,19 +70,19 @@ theorem runAt_pre2 (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 
 /-! ## `W`'s tree -/
 
-/-- A Merkle tree of rows of `64` words hashes `512`-byte leaves and `64`-byte nodes: nothing of `608` bytes. -/
-theorem hashOK_buildTree560 (height : ℕ) (word : LeanVM.Protocol.Compile.Word) (hw : ∀ p, (word p).length = 64) :
-    HashOK (fun m ↦ m.length ≠ 608) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
+/-- A Merkle tree of rows of `64` words hashes `512`-byte leaves and `64`-byte nodes: nothing of `88` bytes. -/
+theorem hashOK_buildTree88 (height : ℕ) (word : LeanVM.Protocol.Compile.Word) (hw : ∀ p, (word p).length = 64) :
+    HashOK (fun m ↦ m.length ≠ 88) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
   unfold LeanVM.Prover.buildTreeWithHash
   refine E2ECompleteness.HashOK.bind ?_ fun leaves ↦ E2ECompleteness.HashOK.bind ?_ fun _ ↦
     E2ECompleteness.HashOK.pure _ _
   · unfold LeanVM.Prover.leafDigestsWithHash
     refine E2ECompleteness.HashOK.arrayMapM _ (fun i ↦ E2ECompleteness.hashOK_callKeccak256 ?_) _
-    show _ ≠ 608
+    show _ ≠ 88
     rw [E2ECompleteness.length_flatMap_kBytes, hw]
     norm_num
   · suffices h : ∀ k (level : Array Digest),
-        HashOK (fun m ↦ m.length ≠ 608) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
+        HashOK (fun m ↦ m.length ≠ 88) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
     intro k
     induction k with
     | zero => intro level; exact E2ECompleteness.HashOK.pure _ _
@@ -93,13 +93,13 @@ theorem hashOK_buildTree560 (height : ℕ) (word : LeanVM.Protocol.Compile.Word)
         E2ECompleteness.HashOK.pure _ _
       unfold LeanVM.Prover.parentsWithHash
       refine E2ECompleteness.HashOK.arrayMapM _ (fun j ↦ E2ECompleteness.hashOK_callKeccak256 ?_) _
-      show _ ≠ 608
+      show _ ≠ 88
       rw [List.length_append, length_digestBytes, length_digestBytes]
       norm_num
 
-theorem hashOK_commitWithH560 (μ : ℕ) (stack : Array K) :
-    HashOK (fun m ↦ m.length ≠ 608) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
-  hashOK_buildTree560 _ _ (E2ECompleteness.length_stackWordFast μ 1 stack)
+theorem hashOK_commitWithH88 (μ : ℕ) (stack : Array K) :
+    HashOK (fun m ↦ m.length ≠ 88) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
+  hashOK_buildTree88 _ _ (E2ECompleteness.length_stackWordFast μ 1 stack)
 
 /-! ## Stage A -/
 
@@ -110,13 +110,13 @@ theorem rawInp_start : (UniKeccakComplete.Prob.tInput (Wr.start default)).length
   simp [UniKeccakComplete.Prob.tInput, Wr.start, length_digestBytes]
 
 set_option maxHeartbeats 1600000 in
-/-- **Stage A caches its writer's `608`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
+/-- **Stage A caches its writer's `88`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
 before `σ`, for a π1 prover hashing short inputs. -/
-theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
+theorem prA_le {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) {K₂ : ℕ}
     (hpS : HashOK Pi2A.Short P1k) (hpC : HC P1k K₂) :
     Pr{let p ← (simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run ∅}[
-      p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 608] ≤
+      p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 88] ≤
       4 * (((0 + setupR + K₂ + 3 * gOpen + setupR + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
   classical
   have hsS := Pi2A.hashOK_setupTreesWithH2 D
@@ -141,23 +141,26 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
   · dsimp only
     rw [simulateQ_bind, StateT.run_bind]
     refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p₂ hp₂ ↦ ?_
-    obtain ⟨hs₂, hb₂⟩ := inv_run (Pi2A.hashOK_graph hg D _ input p1)
+    obtain ⟨hs₂, hb₂⟩ := inv_run (Pi2A.hashOK_graph D _ input p1)
       (hc_of_qc (qc_pi1GraphVerifierWithH D _ input p1)) hs₁ hb₁ hp₂
     rw [simulateQ_bind, StateT.run_bind]
     refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p₃ hp₃ ↦ ?_
     obtain ⟨hs₃, hb₃⟩ := inv_run hsS hsC hs₂ hb₂ hp₃
     obtain ⟨tr, c₃⟩ := p₃
     dsimp only at hs₃ hb₃ ⊢
+    set vw := pi2Choice D C.G Fa.pubOf tr.roots input p1.stream (pi1ClaimsOf D tr.roots.pi1 input p1.stream) with hvw
+    have hfw := frameWords_choice hD C Fa tr.roots input p1.stream (pi1ClaimsOf D tr.roots.pi1 input p1.stream)
+    rw [← hvw] at hfw
     have hc : (D.circuitAt tr.roots.pi1).circuit = Data.circuit := by rw [RecDeployment.circuitAt, hD.1]
     have hn : (D.circuitAt tr.roots.pi1).n = 2 ^ 24 := by rw [Pi2Circuit.n, hc]; rfl
     simp only [Pi2H.ivOfH, Pi2H.digestWithH, Pi2H.ivWithH, bind_assoc, pure_bind]
     have hσ : ((List.range (D.circuitAt tr.roots.pi1).n).flatMap fun i ↦
         (le64 ((D.circuitAt tr.roots.pi1).sigma i)).take 4).length = 2 ^ 26 := by
-      rw [length_flatMap_const _ 4 (fun i ↦ by simp [length_le64]), List.length_range, hn]
+      rw [Pi2G.Cost2.length_flatMap_const _ 4 (fun i ↦ by simp [length_le64]), List.length_range, hn]
       norm_num
     have hκ : ((List.range (D.circuitAt tr.roots.pi1).n).flatMap fun i ↦
         le64 ((D.circuitAt tr.roots.pi1).kappa i).lane.toNat).length = 2 ^ 27 := by
-      rw [length_flatMap_const _ 8 (fun i ↦ length_le64 _), List.length_range, hn]
+      rw [Pi2G.Cost2.length_flatMap_const _ 8 (fun i ↦ length_le64 _), List.length_range, hn]
       norm_num
     have h0 : c₃ (.inl ((List.range (D.circuitAt tr.roots.pi1).n).flatMap fun i ↦
         (le64 ((D.circuitAt tr.roots.pi1).sigma i)).take 4)) = none := by
@@ -169,8 +172,9 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
       (fun σ κ ↦ (D.circuitAt tr.roots.pi1).circuit.encoding ++ digestBytes σ ++ digestBytes κ)
       (fun d ↦ ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ UniKeccak.elementBytes24 tr.roots.pi2Ood ++
         digestBytes d ++ [(D.circuitAt tr.roots.pi1).circuit.logN.toUInt8])
-      (fun iv ↦ RecStatement.name ++ digestBytes iv ++ input.toList)
-      (by rw [hκ]; norm_num) (by rw [hσ]; norm_num) (fun σ κ ↦ ⟨?_, ?_⟩) (fun d ↦ ⟨?_, ?_⟩) (fun iv ↦ ⟨?_, ?_⟩)
+      (fun iv ↦ RecStatement.name ++ digestBytes iv ++ input.toList ++ frameWordsOf vw.1)
+      (by rw [hκ]; norm_num) (by rw [hσ]; norm_num) (fun σ κ ↦ ⟨?_, ?_⟩) (fun d ↦ ⟨?_, ?_⟩)
+      (Ls := 80 + (frameWordsOf vw.1).length) (by omega) (by omega) (fun iv ↦ ⟨?_, ?_⟩)
       _ rawInp ?_ ?_ c₃ hb₃ h0).trans ?_
     · simp only [List.length_append, hc, encoding_length, length_digestBytes]
     · rw [hc, List.append_assoc, List.drop_left' encoding_length]
@@ -186,19 +190,19 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
         length_digestBytes, UniKeccakComplete.Cost.elementBytes24_length])]
       exact take_digestBytes _ _
     · simp only [List.length_append, name_length, length_digestBytes, Vector.length_toList]
-    · rw [List.append_assoc, List.drop_left' name_length]
+      try omega
+    · rw [List.append_assoc, List.append_assoc, List.drop_left' name_length]
       exact take_digestBytes _ _
-    · -- `W`'s tree hashes nothing of `608` bytes.
+    · -- `W`'s tree hashes nothing of `88` bytes.
       intro seed
       refine E2ECompleteness.HashOK.bind ?_ fun x ↦ ?_
-      · obtain ⟨s', h, -, -⟩ := run_sendPublic ((D.circuitAt tr.roots.pi1).circuit.reads.zip
-          (pi2Choice D C Fa tr.roots input p1.stream).1) (Wr.start seed)
+      · obtain ⟨s', h, -, -⟩ := run_sendPublic ((D.circuitAt tr.roots.pi1).circuit.reads.zip vw.1) (Wr.start seed)
         unfold pre2
         simp only [StateT.run_bind, h, pure_bind, StateT.run_lift, bind_assoc, run_sendRoot2, run_sendScalar2,
           StateT.run_pure]
-        exact E2ECompleteness.HashOK.bind (hashOK_commitWithH560 _ _) fun _ ↦
+        exact E2ECompleteness.HashOK.bind (hashOK_commitWithH88 _ _) fun _ ↦
           E2ECompleteness.HashOK.bind (Pi2A.hashOK_oodPointM _ _ fun j ↦ by
-            show (WhirBridge.Pcs.oodInput _ _ j).length ≠ 608
+            show (WhirBridge.Pcs.oodInput _ _ j).length ≠ 88
             rw [Pi2A.oodInput_length]
             decide) fun _ ↦ E2ECompleteness.HashOK.pure _ _
       · obtain ⟨_, _⟩ := x
@@ -213,28 +217,23 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
       rw [simulateQ_bind]
       generalize hy : simulateQ (LeanVM.Protocol.Compile.totalImpl Ht Ft)
         ((pre2 callKeccak256 (C.G tr.roots) (WhirBridge.Pcs.oodPointM callKeccak256)
-          (D.circuitAt tr.roots.pi1).circuit.reads
-          (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2).run
-            (Wr.start seed)) = y
+          (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2).run (Wr.start seed)) = y
       obtain ⟨ws, wr⟩ := y
       have hwr : wr = (Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) (C.G tr.roots) (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
-          (D.circuitAt tr.roots.pi1).circuit.reads
-          (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2).run
-            (Wr.start seed))).2 := by
+          (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2).run (Wr.start seed))).2 := by
         rw [← runAt_pre2 Ht Ft]
         unfold runAt
         rw [hy]
       obtain ⟨hh, ho, hw⟩ := pre2_writer (C.G tr.roots) (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
-        (D.circuitAt tr.roots.pi1).circuit.reads
-        (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2 Ht (Wr.start seed)
+        (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2 Ht (Wr.start seed)
       show (UniKeccakComplete.Prob.tInput wr).take 32 = digestBytes seed
       rw [hwr, hw, tInput_start_append]
       exact take_digestBytes _ _
     · exact le_rfl
 
-/-! ## At π1-rec3's prover -/
+/-! ## At π1-rec4's prover -/
 
-/-- **`α`'s bound**: four links, each at most the hashed inputs before `σ` (the setup twice, π1-rec3's prover, its graph)
+/-- **`α`'s bound**: four links, each at most the hashed inputs before `σ` (the setup twice, π1-rec4's prover, its graph)
 and four, over `2^256`. -/
 noncomputable def alphaBound : ℝ≥0∞ := 4 * (((0 + setupR + 2 ^ 47 + 3 * gOpen + setupR + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256)
 
@@ -263,28 +262,25 @@ theorem alphaBound_le : alphaBound ≤ (2 : ℝ≥0∞)⁻¹ ^ 204 := by
 theorem alphaBound_le201 : alphaBound ≤ (2 : ℝ≥0∞)⁻¹ ^ 201 :=
   alphaBound_le.trans (E2ECompleteness.inv_pow_le_inv_pow (by norm_num))
 
-/-- **`α`'s input is fresh while the graph accepts** at π1-rec3's prover (`Pi1Cost`, `Pi1HashShort`, named): in the
-two-call random-oracle model, after stage A of π2's staged run, `α`'s input is cached and π1-rec3's graph accepted with
-probability at most `alphaBound ≤ 2^-204`. -/
-theorem alphaFresh_of {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D)
-    (hchk : Pi2ViewChecked C) {P1k : Pi1ProverK D} (hcost : Pi1Cost D P1k) (hshort : Pi1HashShort D P1k)
-    (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
-    (hfit : D.pi1.shape.RowsFit rows) (hrel : D.pi1.HonestRelation D.flock rows input q) :
-    Pr{let p ← (simulateQ ro (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).A).run ∅}[
-      p.2 (.inl ((pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1)) ≠ none ∧ GAcc p.1] ≤
-      alphaBound := by
-  have hwc := Pi2W.pi2WitnessComplete hD C hchk
-  refine (prEvent_mono_of_support _ _ (fun p ↦ p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 608)
+/-- **`α`'s input is fresh while the graph accepts**, for a π1 prover hashing short inputs (`HashOK Short`) in at most
+`2^47` hash queries: in the two-call random-oracle model, after stage A of π2's staged run, `α`'s input is cached and
+π1-rec4's graph accepted with probability at most `alphaBound ≤ 2^-204`. -/
+theorem alphaFresh_of {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32)
+    (hshort : HashOK Pi2A.Short P1k) (hc : HC P1k (2 ^ 47)) :
+    Pr{let p ← (simulateQ ro (pi2Staged D C Fa P1k input).A).run ∅}[
+      p.2 (.inl ((pi2Staged D C Fa P1k input).inp p.1)) ≠ none ∧ GAccA p.1] ≤ alphaBound := by
+  refine (prEvent_mono_of_support _ _ (fun p ↦ p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 88)
     fun p hp hev ↦ ?_).trans ?_
-  · have hl := gAcc_length C (pi2Facts hD C hchk) input hD hwc _ hp hev.2
-    have e : (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1 = rawInp p.1 := by
-      show fixLen 608 (UniKeccakComplete.Prob.tInput p.1.wr) = _
+  · have hl := gAcc_length C Fa input hD P1k hp hev.2
+    have e : (pi2Staged D C Fa P1k input).inp p.1 = rawInp p.1 := by
+      show fixLen 88 (UniKeccakComplete.Prob.tInput p.1.wr) = _
       unfold fixLen
       simp only [hl, ↓reduceIte]
     have h1 := hev.1
     rw [e] at h1
     exact ⟨h1, hl⟩
-  · exact prA_le hD hg C _ _ input (hshort input rows q hfit hrel) (hc_of_qc (hcost input rows q hfit hrel))
+  · exact prA_le hD C Fa P1k input hshort hc
 
 end RecCompose.Pi2Sim
 

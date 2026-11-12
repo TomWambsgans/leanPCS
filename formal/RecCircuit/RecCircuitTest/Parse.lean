@@ -45,6 +45,7 @@ def parseNode (line : String) : Except String Node :=
   | ["H", s, f, t] => pure (.hash (nat s) (nat f) (nat t))
   | ["L", h] => pure (.low (nat h))
   | ["N", h] => pure (.narrow (nat h))
+  | ["V", h, k] => pure (.wide (nat h) (nat k))
   | ["B", v, s, w] => pure (.bits (nat v) (nat s) (nat w))
   | ["W", k, n] => pure (.ringWeight (nat k) (nat n))
   | _ => throw s!"bad node line {line}"
@@ -75,6 +76,10 @@ def parseGraph (text : String) : Except String Recorded := do
     | "roots_at" :: rs => rs.map nat
     | _ => []
   i := i + 1
+  let hashed := match words (next i) with
+    | "hashed" :: _ :: hs => hs.map nat
+    | _ => []
+  if (words (next i)).head? == some "hashed" then i := i + 1
   let n := match words (next i) with
     | ["nodes", n] => nat n
     | _ => 0
@@ -111,7 +116,7 @@ def parseGraph (text : String) : Except String Recorded := do
     | "call" :: _ :: ws => calls := calls ++ [← ws.mapM parseWord]
     | _ => throw "bad call"
     i := i + 1
-  return { graph := { nodes, zero, nonzero, kernels, calls, streamLen }, rootsAt, iv }
+  return { graph := { nodes, zero, nonzero, kernels, calls, streamLen }, rootsAt, iv, hashed }
 
 def polyText (p : Poly) : String :=
   let lin := p.linear.foldl (fun s t => s ++ s!" {t.1}:{hexK t.2}") ""
@@ -127,6 +132,7 @@ def sourceText : Source → String
   | .statement => "S"
   | .root i => s!"R {i}"
   | .element i => s!"E {i}"
+  | .claimHash i => s!"H {i}"
   | .zero => "Z"
   | .pad => "P"
 
@@ -151,6 +157,8 @@ def circuitText (c : Circuit) : String := Id.run do
   out := out.push s!"calls {c.calls.length}"
   for call in c.calls do
     out := out.push (s!"call {call.length}" ++ call.foldl (fun s w => s ++ callWordText w) "")
+  out := out.push (s!"hashed {c.hashed.length}" ++ c.hashed.foldl (fun s i => s ++ s!" {i}") "")
+  out := out.push (s!"narrow {c.narrow.length}" ++ c.narrow.foldl (fun s i => s ++ s!" {i}") "")
   out := out.push s!"kappa {c.kappa.size}"
   for (i, k) in c.kappa do out := out.push s!"k {i} {hexK k}"
   out := out.push s!"sigma {c.sigma.size} {hexNat (fnv c.sigma).toNat}"

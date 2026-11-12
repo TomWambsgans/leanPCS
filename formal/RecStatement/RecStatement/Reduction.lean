@@ -11,32 +11,32 @@ The statement here takes neither: it is a **reduction**.
 
 For every adversary `A` of `Q` queries against the recursive verifier,
 
-`Pr[the contract accepts ∧ recExtractor fails] ≤ ε2 Q + Pr[pi1Adversary A breaks π1-rec3 at Keccak-f[1600]]
+`Pr[the contract accepts ∧ recExtractor fails] ≤ ε2 Q + Pr[pi1Adversary A breaks π1-rec4 at Keccak-f[1600]]
                                                     + Pr[hazardAdversary A hits the merge hazard on an accepted stream]`
 
 with two **explicit derived adversaries** (`def`s, below). Each runs `A` (its queries logged), then π2's explicit
 extractor `recExtractor2` on `A`'s output, its transcript and the setup's Keccak-256 evaluations, and outputs:
 
 * `hazardAdversary A`: the public input and the stream π2's extractor outputs (the empty stream if none, which is not
-  on the hazard: `RecGraphKeccak.MergeHazardK` asks that the run draw `t`);
+  on the hazard: `RecGraphKeccak.MergeHazardK4` asks that the run draw `t`);
 * `pi1Adversary A`: the public input and π1's Keccak proof of that stream, with the recursive proof's three π1 opening
   proofs.
 
 **Their resources** (the conjuncts of `RecKnowledgeSoundnessReduction`): each makes exactly `A`'s calls of `π` and
 `π⁻¹`, so at most `Q` (π2's extractor reads the log and the evaluations and makes no query). Their running time is `A`'s
 plus π2's extractor's: preimage replay of the log, inversion under `W`'s root, the fast path, the unique decoder and
-Guruswami–Sudan list decoding at `W`'s `2^24` words, rate `1/2`, and the Keccak π1-rec3's graph's checks at
+Guruswami–Sudan list decoding at `W`'s `2^24` words, rate `1/2`, and the Keccak π1-rec4's graph's checks at
 Keccak-f[1600] on each candidate, a polynomial in the log's and the setup's sizes. Lean states the query count; it does
 not model time.
 
 **The resource the heuristic bounds is their Keccak-f[1600] work**, not `Q`: `A`'s own offline evaluations of
-Keccak-f[1600] (free in the model, uncounted by `Q`), plus the extractor's, chiefly π1-rec3's graph's checks at
+Keccak-f[1600] (free in the model, uncounted by `Q`), plus the extractor's, chiefly π1-rec4's graph's checks at
 Keccak-f[1600] on each candidate stream (its Fiat–Shamir: IV, seed, the stream's challenges, Flock's draws). The
 reader's Fiat–Shamir premise about these adversaries is a bound in that work; the reduction's `Q` counts only the calls
 of `π` and `π⁻¹`.
 
-The Fiat–Shamir heuristic for Keccak-f[1600] is applied by the reader, to these two adversaries: the Keccak π1-rec3's
-random-permutation theorem (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`, `uniBound128 (2^35/|E|) Q`) for
+The Fiat–Shamir heuristic for Keccak-f[1600] is applied by the reader, to these two adversaries: the Keccak π1-rec4's
+random-permutation theorem (`UniKeccak.UniKnowledgeSoundnessKeccakRec4`, target `uniBound128 (2^35/|E|) Q`) for
 the first, `RecGraphKeccak.hazard_probK` (`2^16/|E|` a uniform `t`) for the second.
 -/
 
@@ -56,12 +56,22 @@ def hazardAdversary (D : RecDeployment) (A : RecAdversary) : Pi1StreamAdversary 
     let (z, T) ← (simulateQ loggedOracles (A roots)).run []
     return (z.1, (recExtractor2 D roots z.1 evals T z.2).getD #[])
 
-/-- **π1-rec3's adversary built from `A`**: it runs `A` (its queries logged), then outputs the public input and π1's
+/-- **π1-rec4's adversary built from `A`**: it runs `A` (its queries logged), then outputs the public input and π1's
 Keccak proof of the stream π2's extractor outputs, with the recursive proof's three π1 opening proofs. -/
 def pi1Adversary (D : RecDeployment) (A : RecAdversary) : Pi1Adversary :=
   fun roots evals ↦ do
     let (z, T) ← (simulateQ loggedOracles (A roots)).run []
     return (z.1, z.2.pi1Proof ((recExtractor2 D roots z.1 evals T z.2).getD #[]))
+
+/-- **The collision adversary built from `A`**: it runs `A` (its queries logged), then π2's extractor, and outputs the
+encodings of the first of π1's claims (π1-rec4's graph's, on the extracted stream at Keccak-f[1600]) that differ from
+the declared one's (`claimCollision`): where π2's circuit binds the graph's claim to the declared one by their
+Keccak-256s only (`ClaimHash`), a mismatch is a Keccak-256 collision. -/
+def collisionAdversary (D : RecDeployment) (A : RecAdversary) : CollisionAdversary :=
+  fun roots evals ↦ do
+    let (z, T) ← (simulateQ loggedOracles (A roots)).run []
+    return claimCollision (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) z.1
+      ((recExtractor2 D roots z.1 evals T z.2).getD #[]) z.2.pi1Claims
 
 /-! ## The reduction -/
 
@@ -74,9 +84,9 @@ as a reduction** (π2's verifier and the eight openings; the explicit extractor 
   are `A` followed by π2's extractor, which makes none);
 * the contract accepts while `recExtractor` finds no row counts and stack satisfying `KvHolds D.flock` with
   probability at most `ε2 Q` (π2's part, in the random-permutation model) plus the probability that
-  `pi1Adversary D A` breaks π1-rec3 with its Fiat–Shamir over Keccak-f[1600] (`pi1KeccakSoundnessExperiment`, for the
+  `pi1Adversary D A` breaks π1-rec4 with its Fiat–Shamir over Keccak-f[1600] (`pi1KeccakSoundnessExperiment`, for the
   Keccak π1's extractor `uniExtractorK D.flock`) plus the probability that `hazardAdversary D A` outputs a stream the
-  Keccak π1-rec3's graph accepts whose run hits the merge hazard (`pi1HazardExperiment`, `Pi1HazardAccepted`).
+  Keccak π1-rec4's graph accepts whose run hits the merge hazard (`pi1HazardExperiment`, `Pi1HazardAccepted`).
 
 No Fiat–Shamir hypothesis: bounding the last two terms for these two explicit adversaries is the Fiat–Shamir heuristic
 for Keccak-f[1600], which the reader applies. -/
@@ -84,10 +94,12 @@ def RecKnowledgeSoundnessReduction (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞
   ∀ (A : RecAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
     (∀ roots evals, QueryCostAtMost (pi1Adversary D A roots evals) permutationCallCost Q) ∧
     (∀ roots evals, QueryCostAtMost (hazardAdversary D A roots evals) permutationCallCost Q) ∧
+    (∀ roots evals, QueryCostAtMost (collisionAdversary D A roots evals) permutationCallCost Q) ∧
     Pr{let z ← recSoundnessExperiment D A}[RecBreaksKnowledgeSoundness D (recExtractor D) z] ≤
       ε2 Q +
         Pr{let z ← pi1KeccakSoundnessExperiment D (pi1Adversary D A)}[
           UniKeccak.KBreaksKnowledgeSoundness D.flock D.pi1 (UniKeccak.uniExtractorK D.flock D.pi1) z] +
-        Pr{let z ← pi1HazardExperiment D (hazardAdversary D A)}[Pi1HazardAccepted z.1 z.2.1 z.2.2]
+        Pr{let z ← pi1HazardExperiment D (hazardAdversary D A)}[Pi1HazardAccepted z.1 z.2.1 z.2.2] +
+        Pr{let z ← collisionExperiment D (collisionAdversary D A)}[Keccak256Collision z.1 z.2]
 
 end RecStatement

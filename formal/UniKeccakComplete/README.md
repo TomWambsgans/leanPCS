@@ -3,7 +3,8 @@
 # UniKeccakComplete
 
 Completeness of the Keccak VM's univariate verifier (`formal/UniKeccak`, `docs/leanvm/univariate/KECCAK.md`):
-`UniKeccak.UniCompletenessKeccak` and `UniCompletenessKeccakRec3` (`UniKeccak/Security.lean`) at the Keccak-f block
+`UniKeccak.UniCompletenessKeccak`, `UniCompletenessKeccakRec3` and `UniCompletenessKeccakRec4`
+(`UniKeccak/Security.lean`) at the Keccak-f block
 `F = KeccakFlock.keccakFlockSpec`, **for an explicit Lean honest prover, closed** at the reference shape (128
 signatures). A library of `formal/EndToEnd` (`UniKeccakComplete`, `srcDir = "../UniKeccakComplete"`,
 `warningAsError`), plain (non-`module`) Lean files. Sorry-free, no `native_decide`, no new axioms.
@@ -13,7 +14,7 @@ cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/lea
 systemd-run --scope -p MemoryMax=12G lake build UniKeccakComplete   # every file; the root's #guard_msgs check the axioms
 ```
 
-## The end theorems (`UniKeccakComplete/K/EndClosed.lean`)
+## The end theorems (`UniKeccakComplete/K/EndClosed.lean`, `K/Rec4End.lean`)
 
 ```lean
 theorem UniKeccakComplete.uniCompletenessKeccak_closed (D : KDeployment)
@@ -24,10 +25,14 @@ theorem UniKeccakComplete.uniCompletenessKeccakRec3_closed (D : KDeployment)
     (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16)
     (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccakRec3 KeccakFlock.keccakFlockSpec D (Rec3.uniProverRec3RP flockProveH D) Prob.deltaK
+theorem UniKeccakComplete.uniCompletenessKeccakRec4_closed (D : KDeployment)
+    (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16)
+    (hpiv : 32 ≤ D.programIv.length) :
+    UniCompletenessKeccakRec4 KeccakFlock.keccakFlockSpec D (Rec4.uniProverRec4RP D) Prob.deltaK
 theorem UniKeccakComplete.Prob.deltaK_lt : deltaK < (2 : ℝ≥0∞)⁻¹ ^ 169
 ```
 
-Both depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guard_msgs`).
+All depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guard_msgs`).
 
 **On the EIP's PCS claims** (the verifier of `formal/UniKeccak`: each commitment's out-of-domain answer read after
 its root, the roots carried as their bytes, the setup's commitment `(root, ood)` in the contract's IV, one PCS claim
@@ -52,9 +57,46 @@ answer), fresh by its length only if the IV's preimage (`91 + |IV|` bytes) has a
 | `(2^22 − 1)/2^192` | a bus challenge `β` makes a divided fingerprint vanish (≤ `capBoundK = 3,227,648` per `α`; `2,439,584` at the reference row counts) | `K/BadFpCount.lean` (`badFpCard_keccakRef_22`) |
 | `6/2^256` | the main line's five chained bus answers meet an earlier query | `Chain.lean` |
 | `2^15/2^192` | `y(t)` a proper prefix of another point on `C1` (≤ `2·2^14` such `t` per Flock point) | `K/ProbBadT.lean` (`badTCard_keccakRef_15`) |
-| `2^-200` | `t`'s query not fresh (`75` chain steps, `34,078,798` hashed inputs before it) | `K/ProbTFresh.lean`, `K/Rec3ProbTFresh.lean` |
+| `2^-200` | `t`'s query not fresh (`75` chain steps, `34,078,798` hashed inputs before it; π1-rec4: `42` steps, `< 2^28`) | `K/ProbTFresh.lean`, `K/Rec3ProbTFresh.lean`, `K/Rec4TFresh.lean` |
 | `2^-304` | an opening's proof of work fails for every nonce below `nonceFuel` | `K/ProbGrind.lean`, `K/Rec3ProbGrind.lean` |
-| `rpmError (2^48)` | the permutation as two random oracles: setup, prover (`≤ 2^47`), verifier on streams of `≤ 2^14` bytes | `K/FlockCost.lean` (`totalCostK_le`), `K/Rec3ProverCost.lean` (`totalCostK3_le`) |
+| `rpmError (2^48)` | the permutation as two random oracles (π1-rec4: the rate and the permutation): setup, prover (`≤ 2^47`), verifier on streams of `≤ 2^14` bytes | `K/FlockCost.lean` (`totalCostK_le`), `K/Rec3ProverCost.lean` (`totalCostK3_le`), `K/Rec4CostBound.lean` (`expCost4_reference`) |
+
+## π1-rec4 (`K/Rec4*.lean`)
+
+`UniKeccak.UniCompletenessKeccakRec4` (the recursion's inner proof since π1-rec4) is closed at the same bound
+(`uniCompletenessKeccakRec4_closed`), for the honest prover **`Rec4.uniProverRec4RP D`** (`K/Rec4Prover.lean`):
+`Rec4.uniProverRec4With H W F D`, generic in the monad, Keccak-256 `H`, its 136-byte rate `W` and the permutation `F`
+(it commutes with every monad morphism that commutes with the opening, `app_uniProverRec4With`), over the random
+permutation (`H = keccak256With π`, `W = rateWith π`, `F = π`). Its stream is π1-rec3's byte for byte with π1-rec4's
+three wide draws (`sampleWideW`: `c, β, γ, c'` after `C1`; `t, f_0 … f_3` after `C2`; `ρ, λ, f_4, f_5` after the
+values at `t`), Flock's zerocheck from the given `c'` (`zerocheckW4`), no ring map in Flock (its end the ring switch at
+the late map, `flockOut4`), π1-rec3's paired batch with `λ` given.
+
+- **The verifier with `H` and `W` explicit** (`Rec4VerifierH.lean`): `reduceWithKH4`, `verifyWithKH4`,
+  `KDeployment.verifierWith4H`, equal to `UniKeccak`'s at `H = keccak256With F`, `W` its rate (`verifierWith4_eqH4`).
+- **Random permutation → rate random oracle → five digests** (`Rec4Rate.lean`, `Rec4Couple.lean`, `Rec4Exp.lean`,
+  `Rec4Prob.lean`): the experiment over π1-rec4's calls (`experiment4_eq`), the soundness side's
+  `UniKeccakSound.Rec4.keccak256RateTransfer` for the transfer (`rpm_le_romW`, `rpmError N`), then an exact coupling
+  of a rate query with five digest queries (`romW_evalDistEq`: the input and four tails `extIn i x`, the rate the first
+  `136` bytes of the five digests, `mkRate`).
+- **The staged run** (`Rec4Staged.lean`, `Rec4Split.lean`, `Rec4Grind.lean`, `Rec4ProbK.lean`): `KStaged4` (the bus
+  draw at `Nbad/2^192`, `t` at `ct/2^192 + εt`, grinding `2^-304`), the prover cut at its draws (`stagedU4`),
+  `uniCompletenessKeccakRec4_of_core` from named hypotheses, each discharged: the block count
+  (`Rec4Cost.lean`, `Rec4CostBound.lean`: `expCost4_reference`, `2^48`, π1-rec4's three calls read through
+  leanerVM's two), the duplex discipline (`Rec4Duplex.lean`: `expDuplex4`), the deterministic core
+  (`Rec4Flock.lean`, `Rec4Batch.lean`, `Rec4SyncVerifier.lean`, `Rec4CoreRun.lean`, `Rec4Core.lean`:
+  `coreAccepts4_reference`, `coreFailsOnlyAtPow4`), the point draw's freshness (`Rec4Chain.lean`, `Rec4TFresh.lean`:
+  `tQueryFresh4_reference`, `2^-200`: `42` challenges after the bus draw, each a step and four tails, Flock's last on
+  `80` bytes taking `C2`'s tree into its step, fewer than `2^28` hashed inputs); the bound is π1-rec3's
+  (`Rec3.delta3_le_deltaK`).
+- **The openings** (`Rec4Core.lean`, `Rec4RunOpenings.lean`): `Rec4.honest_openings4` (the run on an honest proof, at
+  every rate and permutation and every challenge, returns three point claims on `C1`, `C2`, the setup, in order, at
+  points of `27`, `26`, `23` coordinates); `Rec4.runK4_openings` (every run of `runK4` that returns a result: three
+  point claims on `C1`, `C2`, the setup, in order, no bit slice; their lengths in an accepting `verifyWithK4` by
+  `pcsOpenK_length`).
+- Decision (recorded): the defeq checks against the prover's state (`frontOf4`) keep Flock's prover, `atTOf`,
+  `c2DataOf`, `c1Stack`, `setupStackOf` folded (`attribute [local irreducible]` in `Rec4SyncVerifier.lean`,
+  `Rec4Core.lean`); unfolded, they exhaust memory.
 
 ## The layers
 
@@ -114,6 +156,6 @@ and `Lv42`'s shared `Protocol.LeanIsaBase` and `Arithmetization.Completeness.Bas
 
 ## What is not done
 
-Both statements are closed at the reference shape. Other shapes would need the
+The three statements are closed at the reference shape. Other shapes would need the
 reference-shape numbers (stack sizes, the bad sets' counts, the costs, the coordinate functionals at `h_SHA3`)
 recomputed; most layers are shape-generic.

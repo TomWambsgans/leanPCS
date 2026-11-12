@@ -29,22 +29,25 @@ open RecStatement LeanVM.Parameters Primitives Finset
 
 theorem data_maxGamma : Data.circuit.maxGamma = 1 := by decide +kernel
 
-theorem data_terms_length : Data.publicTerms.length = 38 := by decide +kernel
+theorem data_terms_length : Data.publicTerms.length = 99 := by decide +kernel
 
-theorem data_zero_terms : ∀ j < 16, (Data.publicTerms.getD j default).value.terms = [] := by decide +kernel
+/-- The ports of value zero: all but `92 .. 96` (the three claims' Keccak-256s and the statement). -/
+theorem data_zero_terms : ∀ j < 99, (j < 92 ∨ 96 ≤ j) → (Data.publicTerms.getD j default).value.terms = [] := by
+  decide +kernel
 
-theorem data_four : ((List.range 38).map fun j ↦ if (Data.publicTerms.getD j default).value.terms.length = 2 ∨
-    (Data.publicTerms.getD j default).value.terms.length = 4 then 1 else 0).sum = 3 := by decide +kernel
+theorem data_four : ((List.range 99).map fun j ↦ if (Data.publicTerms.getD j default).value.terms.length = 2 ∨
+    (Data.publicTerms.getD j default).value.terms.length = 4 then 1 else 0).sum = 4 := by decide +kernel
 
-theorem data_reads_roots : Data.reads.count .root = 2 := by decide +kernel
+theorem data_reads_roots : Data.reads.count .root = 0 := by decide +kernel
 
-theorem data_holes_length : Data.holes.length = 38 := by decide +kernel
+theorem data_holes_length : Data.holes.length = 99 := by decide +kernel
 
-/-- **`Φ`'s terms**: one role, `15`, the `22` ports of nonzero value in order, each its hole's row and its value. -/
-theorem data_phi : phiOf Data.circuit = [(15, (List.range 22).map fun J ↦
-    (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value))] := by decide +kernel
+/-- **`Φ`'s terms**: one role, `15`, the `4` ports of nonzero value in order (`92 .. 96`), each its hole's row and its
+value. -/
+theorem data_phi : phiOf Data.circuit = [(15, (List.range 4).map fun J ↦
+    (Data.holes.getD (92 + J) 0 / 16, (Data.publicTerms.getD (92 + J) default).value))] := by decide +kernel
 
-theorem data_holes_role : ∀ J < 22, Data.holes.getD (16 + J) 0 % 16 = 15 := by decide +kernel
+theorem data_holes_role : ∀ J < 4, Data.holes.getD (92 + J) 0 % 16 = 15 := by decide +kernel
 
 /-! ## The view's shape from `Data` -/
 
@@ -63,17 +66,16 @@ theorem viewOf_pairs : pairsOf C = Data.pairs := congrArg Circuit.pairs hview
 
 theorem viewOf_formulas : formulasOf C = Data.formulas := congrArg Circuit.formulas hview
 
-theorem viewOf_reads : List.replicate (publicCounts C).1 Read.root ++ List.replicate (publicCounts C).2 Read.scalar =
-    Data.reads := congrArg Circuit.reads hview
+theorem viewOf_reads : readsOf C = Data.reads := congrArg Circuit.reads hview
 
-theorem viewOf_roots : (publicCounts C).1 = 2 := by
+theorem viewOf_roots : (publicCounts C).1 = 0 := by
   have h := congrArg (List.count Read.root) (viewOf_reads hview)
-  rw [data_reads_roots, List.count_append, List.count_replicate_self, List.count_replicate] at h
-  simpa using h
+  rw [data_reads_roots, readsOf, List.count_append, List.count_append, List.count_replicate_self] at h
+  omega
 
 theorem viewOf_holes : holesOf C = Data.holes := congrArg Circuit.holes hview
 
-theorem viewOf_ports : C.ports.size = 38 := by
+theorem viewOf_ports : C.ports.size = 99 := by
   have h := congrArg List.length (viewOf_terms hview)
   rw [data_terms_length] at h
   simpa [publicTermsOf] using h
@@ -86,14 +88,15 @@ theorem holesOf_getD (C : RecCircuit.Circuit) {j : ℕ} (hj : j < C.ports.size) 
 
 theorem publicTermsOf_getD (C : RecCircuit.Circuit) {j : ℕ} (hj : j < C.ports.size) :
     (publicTermsOf C).getD j default =
-      ⟨2 ^ C.logN + j, ⟨termOf (publicCounts C).1 (C.ports.getD j default).source, none⟩⟩ := by
+      ⟨2 ^ C.logN + j, ⟨termOf C.hashed.length (publicCounts C).1 (C.ports.getD j default).source, none⟩⟩ := by
   simp [publicTermsOf, List.getD_eq_getElem?_getD, hj]
 
-theorem termOf_eq_nil {roots : ℕ} {s : RecCircuit.Source} (h : termOf roots s = []) : s = .zero ∨ s = .pad := by
+theorem termOf_eq_nil {hashes roots : ℕ} {s : RecCircuit.Source} (h : termOf hashes roots s = []) :
+    s = .zero ∨ s = .pad := by
   cases s <;> simp_all [termOf]
 
-theorem termOf_length_four (roots : ℕ) (s : RecCircuit.Source) :
-    s.limbs = 4 ↔ (termOf roots s).length = 2 ∨ (termOf roots s).length = 4 := by
+theorem termOf_length_four (hashes roots : ℕ) (s : RecCircuit.Source) :
+    s.limbs = 4 ↔ (termOf hashes roots s).length = 2 ∨ (termOf hashes roots s).length = 4 := by
   cases s <;> simp [termOf, RecCircuit.Source.limbs]
 
 /-! ## The recursion's constants -/
@@ -317,9 +320,9 @@ theorem fpList_zero (ls : List (RecPiop.Limb E)) (γ : E) : RecPiop.fpList ls γ
   rw [this, mul_zero]
 
 /-- **A port's public term is its fingerprint of `pubOfSource`**, at every scalar list. -/
-theorem term_value_source (roots : ℕ) (src : RecCircuit.Source) (pubs : List E) (γ : E) :
-    (⟨termOf roots src, none⟩ : Lin).toF.eval (powersList γ 2) (fun c ↦ pubs.getD c 0) =
-      RecPiop.fpList (RecCircuit.portWeights (List.range src.limbs)) γ (pubOfSource roots pubs src) := by
+theorem term_value_source (hashes roots : ℕ) (src : RecCircuit.Source) (pubs : List E) (γ : E) :
+    (⟨termOf hashes roots src, none⟩ : Lin).toF.eval (powersList γ 2) (fun c ↦ pubs.getD c 0) =
+      RecPiop.fpList (RecCircuit.portWeights (List.range src.limbs)) γ (pubOfSource hashes roots pubs src) := by
   obtain ⟨hg0, hg1⟩ := powersList_two γ
   rw [linF_eval]
   cases src with
@@ -333,6 +336,16 @@ theorem term_value_source (roots : ℕ) (src : RecCircuit.Source) (pubs : List E
     linear_combination (-1 : E) * (F192.Y * F192.ofF64 (F192.limb (pubs.getD 0 0 + F192.Y * pubs.getD 1 0) 1) +
       γ * (F192.Y * F192.ofF64 (F192.limb (pubs.getD 2 0 + F192.Y * pubs.getD 3 0) 1))) *
         CharTwo.two_eq_zero (R := E)
+  | claimHash i =>
+    have e : List.range 4 = [0, 1, 2, 3] := rfl
+    simp only [RecCircuit.Source.limbs, e, termOf, pubOfSource, canon2, List.map_cons, List.map_nil, List.sum_cons,
+      List.sum_nil, List.cons_append, List.nil_append]
+    rw [oneC_eval _ hg0, yC_eval _ hg0, gC_eval _ γ hg1, gyC_eval _ γ hg1]
+    show _ = RecPiop.fpList (RecPiop.rootLimbs 0 1 2 3 F192.Y) γ _
+    rw [RecPiop.fpList_root]
+    linear_combination (-1 : E) * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 4 * i) 0 +
+      F192.Y * pubs.getD (4 + 4 * i + 1) 0) 1) + γ * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 4 * i + 2) 0 +
+        F192.Y * pubs.getD (4 + 4 * i + 3) 0) 1))) * CharTwo.two_eq_zero (R := E)
   | root i =>
     have e : List.range 4 = [0, 1, 2, 3] := rfl
     simp only [RecCircuit.Source.limbs, e, termOf, pubOfSource, canon2, List.map_cons, List.map_nil, List.sum_cons,
@@ -340,15 +353,15 @@ theorem term_value_source (roots : ℕ) (src : RecCircuit.Source) (pubs : List E
     rw [oneC_eval _ hg0, gC_eval _ γ hg1]
     show _ = RecPiop.fpList (RecPiop.rootLimbs 0 1 2 3 F192.Y) γ _
     rw [RecPiop.fpList_root]
-    linear_combination (-1 : E) * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 2 * i + 1) 0) 1) +
-      γ * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 2 * i) 0) 1))) * CharTwo.two_eq_zero (R := E)
+    linear_combination (-1 : E) * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 4 * hashes + 2 * i + 1) 0) 1) +
+      γ * (F192.Y * F192.ofF64 (F192.limb (pubs.getD (4 + 4 * hashes + 2 * i) 0) 1))) * CharTwo.two_eq_zero (R := E)
   | element i =>
     have e : List.range 3 = [0, 1, 2] := rfl
     simp only [RecCircuit.Source.limbs, e, termOf, pubOfSource, List.map_cons, List.map_nil, List.sum_cons,
       List.sum_nil]
     rw [oneC_eval _ hg0]
     show _ = RecPiop.fpList (RecPiop.elemLimbs 0 1 2 F192.Y) γ _
-    have h := limbs3_fp (pubs.getD (4 + 2 * roots + i) 0)
+    have h := limbs3_fp (pubs.getD (4 + 4 * hashes + 2 * roots + i) 0)
     simp only [limbs3, List.getD_cons_zero, List.getD_cons_succ] at h
     rw [limbs3, RecPiop.fpList_elem, h]
     ring

@@ -117,6 +117,12 @@ def KDeployment.verifierWith (D : KDeployment) (v : KeccakVariant) (roots : Setu
     (proof : KeccakProof) : m Bool := do
   verifyWithK F D.shape v (← D.ivWith F v roots) roots input proof
 
+/-- **The deployed Keccak verifier at π1-rec4** over `F` on the setup's roots: its IV (`contract_iv` at `keccakRec4`,
+code 4), then `verifyWithK4` (π1-rec4's run, the same three claims' openings). -/
+def KDeployment.verifierWith4 (D : KDeployment) (roots : SetupRootsK) (input : Vector UInt8 32)
+    (proof : KeccakProof) : m Bool := do
+  verifyWithK4 F D.shape keccakRec4 (← D.ivWith F keccakRec4 roots) roots input proof
+
 end With
 
 /-! ### The extractor -/
@@ -203,6 +209,22 @@ VM's relation with the Keccak-f block `F`, for the explicit extractor `uniExtrac
 def UniKnowledgeSoundnessKeccakRec3 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (ε : ℕ → ℝ≥0∞) : Prop :=
   UniKnowledgeSoundnessKeccakWith F D keccakRec3 (uniExtractorK F D) ε
 
+/-- **The knowledge-soundness experiment at π1-rec4**: `keccakSoundnessExperiment` with π1-rec4's verifier
+(`KDeployment.verifierWith4`). -/
+noncomputable def keccakSoundnessExperiment4 (D : KDeployment) (A : KAdversary) : ProbComp KOutcome :=
+  runWithRandomPermutation do
+    let tree ← setupTreeKWith queryPermutation D
+    let roots := D.setupRoots tree
+    let (z, transcript) ← (simulateQ loggedOracles (A roots)).run []
+    let accepted ← D.verifierWith4 queryPermutation roots z.1 z.2
+    return ((z, accepted), PcsQuotient.Tree.evaluations tree, transcript)
+
+/-- **Knowledge soundness of the Keccak π1 at π1-rec4's shape** (`KECCAK_REC4`, the recursion's since π1-rec4) against
+the Keccak VM's relation with the Keccak-f block `F`, for the explicit extractor `uniExtractorK F`. -/
+def UniKnowledgeSoundnessKeccakRec4 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (ε : ℕ → ℝ≥0∞) : Prop :=
+  ∀ (A : KAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
+    Pr{let z ← keccakSoundnessExperiment4 D A}[KBreaksKnowledgeSoundness F D (uniExtractorK F D) z] ≤ ε Q
+
 /-! ### Completeness -/
 
 /-- A prover: from the public input, the row counts and a stack of the Keccak VM's layout at them, a proof (or none),
@@ -236,5 +258,21 @@ def UniCompletenessKeccak (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (P : 
 def UniCompletenessKeccakRec3 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (P : KProver D) (δ : ℝ≥0∞) :
     Prop :=
   UniCompletenessKeccakWith F D keccakRec3 P δ
+
+/-- **The completeness experiment at π1-rec4**: `keccakCompletenessExperiment` with π1-rec4's verifier. -/
+noncomputable def keccakCompletenessExperiment4 (D : KDeployment) (P : KProver D) (input : Vector UInt8 32)
+    (rows : List ℕ) (q : D.Stack rows) : ProbComp Bool :=
+  runWithRandomPermutation do
+    let tree ← setupTreeKWith queryPermutation D
+    match ← P input rows q with
+    | none => return false
+    | some proof => D.verifierWith4 queryPermutation (D.setupRoots tree) input proof
+
+/-- **Completeness** of the Keccak π1 at π1-rec4's shape, for a prover given explicitly. -/
+def UniCompletenessKeccakRec4 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (P : KProver D) (δ : ℝ≥0∞) :
+    Prop :=
+  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows), D.shape.RowsFit rows →
+    D.HonestRelation F rows input q →
+    Pr{let b ← keccakCompletenessExperiment4 D P input rows q}[b = false] ≤ δ
 
 end UniKeccak

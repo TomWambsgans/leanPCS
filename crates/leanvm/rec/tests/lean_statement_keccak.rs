@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! π2's circuit as `formal/RecStatement` transcribes it, for the Keccak VM's π1-rec3 at the 128-signature reference
-//! workload (`KECCAK_128`, the graph of `formal/RecGraphKeccak/RecGraphKeccak/Emitted.lean`), D16v. Self-contained: the
+//! π2's circuit as `formal/RecStatement` transcribes it, for the Keccak VM's π1-rec4 (`leanvm_rec::PI1`) at the
+//! 128-signature reference workload (`KECCAK_128`), D16v, π1's three claims hashed in the circuit. Self-contained: the
 //! renderer ([`render`], the circuit's tables and the instance's constants as Lean data) is here.
 //!
 //! - `keccak_statement_data_is_current` (ignored: it compiles the circuit twice and commits its setup): the checked-in
@@ -16,7 +16,7 @@
 //! The circuit is compiled on synthetic streams (as `tests/lean_circuit_keccak128.rs`): the test checks that the
 //! adapted circuit (its formulas, pairs, reads, public terms, `σ`, `κ`, hence its digest and setup root), π1's calls and
 //! π1's contract IV do not depend on the stream or the public input. π1's contract IV is
-//! `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV, SetupRoots::REFERENCE)`: `record_verifier` binds the
+//! `contract_iv(KECCAK_128, PI1, PROGRAM_IV, SetupRoots::REFERENCE)`: `record_verifier` binds the
 //! code's reference root (the setup call's constant `F` in `Emitted.lean`'s `call2` is `SetupRoots::REFERENCE.f`).
 //!
 //! `RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_rec --test lean_statement_keccak -- --ignored --nocapture`
@@ -35,7 +35,8 @@ use leanvm_rec::pi2::prover::Setup;
 use leanvm_rec::pi2::verifier::Spec;
 use leanvm_rec::REFERENCE;
 use leanvm_univariate::contract::{Recorded, SetupRoots, contract_iv, record_verifier};
-use leanvm_univariate::{KECCAK_REC3, Shape};
+use leanvm_univariate::Shape;
+use leanvm_rec::PI1;
 
 /// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`leanvm_rec::REFERENCE`,
 /// `leanvm_statement::shapes::reference()`; Lean's `RecGraphKeccak.Pi1.keccak128`).
@@ -120,7 +121,7 @@ fn call_word_text(w: &CallWord) -> String {
 const CHUNK: usize = 16;
 
 /// The Lean file of the circuit's tables and the instance's constants.
-fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
+fn render(circuit: &Circuit, calls: &[Vec<CallWord>], hashed: &[u32], c: &Constants) -> String {
     let mut out = String::new();
     let w = &mut out;
     let spec = Spec::of(circuit);
@@ -132,18 +133,18 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     .unwrap();
     writeln!(
         w,
-        "-- π1-rec3. Do not edit: `UPDATE_LEAN=1 cargo test --release -p leanvm_rec --test lean_statement_keccak -- --ignored`"
+        "-- π1-rec4. Do not edit: `UPDATE_LEAN=1 cargo test --release -p leanvm_rec --test lean_statement_keccak -- --ignored`"
     )
     .unwrap();
     writeln!(w, "-- rewrites it, and the test fails while it is stale.").unwrap();
     writeln!(w, "import RecStatement.Basic").unwrap();
     writeln!(w).unwrap();
     writeln!(w, "/-!").unwrap();
-    writeln!(w, "# π2's circuit for π1-rec3, as its verifier reads it").unwrap();
+    writeln!(w, "# π2's circuit for π1-rec4, as its verifier reads it").unwrap();
     writeln!(w).unwrap();
     writeln!(
         w,
-        "`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC3, Point), D16v)` through"
+        "`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC4))` (D16v) through"
     )
     .unwrap();
     writeln!(
@@ -160,7 +161,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     .unwrap();
     writeln!(
         w,
-        "{} public terms ({} of them of value zero, in no `Φ`); π1's {} claims. Not `σ`, not `κ` (the setup's root and",
+        "{} public terms ({} of them of value zero, in no `Φ`); {} of π1's claims encoded by the contract. Not `σ`, not `κ` (the setup's root and",
         circuit.public.len(),
         spec.ports - spec.phi.iter().map(|(_, terms)| terms.len()).sum::<usize>(),
         calls.len()
@@ -256,7 +257,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup root). -/"
+        "/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec4's at the reference setup root). -/"
     )
     .unwrap();
     writeln!(w, "def pi1Iv : List UInt8 := hexBytes \"{}\"", hex(&c.pi1_iv)).unwrap();
@@ -277,7 +278,19 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- π1's claims as the circuit names their words (`spec::Circuit::calls`). -/"
+        "/-- π1's claims the circuit hashes (`spec::Circuit::hashed`: their indices among π1's claims, its frame's payloads). -/"
+    )
+    .unwrap();
+    writeln!(
+        w,
+        "def hashed : List ℕ := [{}]",
+        hashed.iter().map(|h| h.to_string()).collect::<Vec<_>>().join(", ")
+    )
+    .unwrap();
+    writeln!(w).unwrap();
+    writeln!(
+        w,
+        "/-- π1's claims the contract encodes, as the circuit names their words (`spec::Circuit::calls`). -/"
     )
     .unwrap();
     writeln!(w, "def pi1Calls : List (List CallWord) := [").unwrap();
@@ -300,6 +313,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
 struct Made {
     circuit: Circuit,
     calls: Vec<Vec<CallWord>>,
+    hashed: Vec<u32>,
     pi1_iv: [u8; 32],
 }
 
@@ -316,6 +330,7 @@ fn make(recorded: &Recorded, seed: usize, public: [u8; 32]) -> Made {
     Made {
         circuit: adapt::adapt(&c.finished.circuit),
         calls: c.finished.circuit.calls.clone(),
+        hashed: c.finished.circuit.hashed.clone(),
         pi1_iv: c.pi1_iv,
     }
 }
@@ -344,19 +359,19 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
     )
 }
 
-/// The checked-in Lean data is π2's circuit for the Keccak VM's π1-rec3: `UPDATE_LEAN=1` rewrites it.
+/// The checked-in Lean data is π2's circuit for the Keccak VM's π1-rec4: `UPDATE_LEAN=1` rewrites it.
 #[test]
-#[ignore = "compiles π2's circuit for the Keccak VM's π1-rec3 twice (2^24 positions) and commits its setup"]
+#[ignore = "compiles π2's circuit for the Keccak VM's π1-rec4 twice (2^24 positions) and commits its setup"]
 fn keccak_statement_data_is_current() {
     let rendered = deep(|| {
-        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3);
+        let recorded = record_verifier(&KECCAK_128, PI1);
         // π1's contract IV binds the code's reference root.
         assert_eq!(KECCAK_128.log_memory, 20);
         assert_eq!(KECCAK_128.log_bytecode, 18);
         assert_eq!(KECCAK_128.table_rows, [24260, 36229, 24626, 35812, 15509, 17712]);
         let iv = contract_iv(
             &KECCAK_128,
-            KECCAK_REC3,
+            PI1,
             &PROGRAM_IV,
             &SetupRoots::REFERENCE,
         );
@@ -368,18 +383,19 @@ fn keccak_statement_data_is_current() {
             setup_root: [0; 32],
             digest: m.circuit.digest(),
         };
-        let text_a = render(&a.circuit, &a.calls, &placeholder(&a));
+        let text_a = render(&a.circuit, &a.calls, &a.hashed, &placeholder(&a));
         // Another stream and public input: the same circuit, calls and IV.
         {
             let b = make(&recorded, 1, [0x5a; 32]);
             assert_eq!(a.pi1_iv, iv, "π1's contract IV");
             assert_eq!(b.pi1_iv, iv, "π1's contract IV does not depend on the stream");
             assert_eq!(a.calls, b.calls, "π1's calls do not depend on the stream");
+            assert_eq!(a.hashed, b.hashed, "the hashed claims do not depend on the stream");
             assert_eq!(a.circuit.sigma, b.circuit.sigma, "σ does not depend on the stream");
             assert_eq!(a.circuit.kappa, b.circuit.kappa, "κ does not depend on the stream");
             assert_eq!(a.circuit.digest(), b.circuit.digest(), "the digest does not depend on the stream");
             assert!(
-                text_a == render(&b.circuit, &b.calls, &placeholder(&b)),
+                text_a == render(&b.circuit, &b.calls, &b.hashed, &placeholder(&b)),
                 "the circuit's tables do not depend on the stream"
             );
         }
@@ -390,7 +406,7 @@ fn keccak_statement_data_is_current() {
             digest: a.circuit.digest(),
         };
         eprintln!("{}", summary(&a.circuit, &a.calls, &constants));
-        render(&a.circuit, &a.calls, &constants)
+        render(&a.circuit, &a.calls, &a.hashed, &constants)
     });
     let path = data_path();
     if std::env::var_os("UPDATE_LEAN").is_some() {

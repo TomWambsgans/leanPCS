@@ -10,6 +10,9 @@ import UniKeccakSound.FinalK3
 import UniKeccakSound.EndK
 import UniKeccakSound.EndRefK
 import UniKeccakSound.EndClosedK
+import UniKeccakSound.Rec4.RingSplit
+import UniKeccakSound.Rec4.RateTransfer
+import UniKeccakSound.Rec4.Closed4
 
 /-!
 # UniKeccakSound: knowledge soundness of the Keccak VM's univariate verifier
@@ -52,3 +55,27 @@ See `README.md`.
 /-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed
+
+/-- info: 'UniKeccakSound.Rec4.ringBad_split_first' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.ringBad_split_first
+
+/-- info: 'UniKeccakSound.Rec4.ringBad_split_second' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.ringBad_split_second
+
+/-- info: 'UniKeccakSound.Rec4.keccak256RateTransfer' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.keccak256RateTransfer
+
+/-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed
+
+/-- info: 'UniKeccakSound.Rec4.uniPiopK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.uniPiopK4
+
+/-- info: 'UniKeccakSound.Rec4.rpm_le_kcSR' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.rpm_le_kcSR

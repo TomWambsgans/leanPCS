@@ -7,8 +7,7 @@ The current figures are in [`../AGENTS.md`](../AGENTS.md), "Numbers"; the EIP dr
 - [`PCS_CLAIM.md`](PCS_CLAIM.md): the EIP draft's PCS claim as `crates/pcs_claim` implements it (version 1).
 - [`PERF_PROVER.md`](PERF_PROVER.md): how the provers are measured, where their time goes, their speedups (the same
   proofs) and what was rejected.
-- [`LEAN_PORT.md`](LEAN_PORT.md): what `formal/` still needs to state the deployed protocols (membership is ported; the
-  leanVM line states `f96a7938`'s).
+- [`LEAN_PORT.md`](LEAN_PORT.md): the Lean port of the deployed protocols (both lines are ported) and what it leaves.
 - [`HISTORY.md`](HISTORY.md): superseded protocols and figures, by line and commit.
 - Membership (`crates/membership`):
   - [`membership/PROTOCOL.md`](membership/PROTOCOL.md): the protocol (circuit, tables, three claims), its soundness,

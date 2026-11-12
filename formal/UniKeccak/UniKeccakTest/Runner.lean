@@ -10,7 +10,7 @@ import UniKeccak
 * **Terminal vectors** (`TERMINAL`): `UniKeccak.structuredTerminal` on the Rust's random inputs at every skip
   `k ≤ 6`, against the Rust's `structured_terminal` and walked terminal (which the writer asserts equal), and Lean's
   own walk of the block (`walkedTerminalK`) against the Rust's walked terminal.
-* **Verifier vectors**: the Lean verifier (`UniKeccak.runK`, compiled evaluation, not the kernel) on every vector's
+* **Verifier vectors**: the Lean verifier (`UniKeccak.runKV`: `runK`, or `runK4` at π1-rec4, compiled evaluation, not the kernel) on every vector's
   calldata, compared with the Rust verifier's on every value it states: the verdict (stream error or not, and which),
   every challenge drawn, every value it requires to be zero, the accept bit, the number of relations, each stack's
   variables, every opening it leaves, declared (point claims with their points and values, or weighted claims with
@@ -220,6 +220,7 @@ def parseVector (lines : List String) : Except String Vector' := do
 def variantNamed : String → Option KeccakVariant
   | "keccak" => some keccakMain
   | "keccak_rec3" => some keccakRec3
+  | "keccak_rec4" => some keccakRec4
   | _ => none
 
 def modeNamed : String → Option ClaimsMode
@@ -266,7 +267,7 @@ def compare (v : Vector') : Except String (Option String) := do
   if let some counts := v.counts then
     if (rowsOf v.stream).take counts.length != counts then
       return some s!"counts: Lean {rowsOf v.stream}, Rust {counts}"
-  let o := runK shape v.iv.toList v.publicInput.toList v.stream variant mode
+  let o := runKV shape v.iv.toList v.publicInput.toList v.stream variant mode
   let leanError := match o.result with
     | .ok _ => none
     | .error e => some e.name

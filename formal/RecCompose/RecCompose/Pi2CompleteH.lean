@@ -34,7 +34,7 @@ def ivWithH (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) 
   return digestBytes d
 
 /-- `RecStatement.reduceWith` with Keccak-256 `H`. -/
-def reduceWithH (s : Spec) (statement : List E) : ChanM m Reduced := do
+def reduceWithH (s : Spec) (statement : List E) (frameAt : ℕ → List UInt8) : ChanM m Reduced := do
   let mut pubs := statement
   for rd in s.reads do
     match rd with
@@ -43,6 +43,8 @@ def reduceWithH (s : Spec) (statement : List E) : ChanM m Reduced := do
       let (lo, hi) ← UniStatement.nextRoot (m := m)
       pubs := pubs ++ [lo, hi]
     | .scalar => pubs := pubs ++ [← UniStatement.nextScalar (m := m)]
+    | .narrow => pubs := pubs ++ [← nextNarrow (m := m)]
+    | .frame p => pubs := pubs ++ UniStatement.publicWordsOf (frameAt p)
   let wRoot ← UniStatement.nextRoot (m := m)
   let wOod ← UniStatement.nextScalar (m := m)
   let α ← UniKeccakComplete.sampleH H
@@ -59,10 +61,11 @@ def reduceWithH (s : Spec) (statement : List E) : ChanM m Reduced := do
   return ⟨pubs, pubs.map pairPoint, (wRoot, qRoot), (wOod, qOod), inp, s.core.run inp⟩
 
 /-- `RecStatement.runWith` with Keccak-256 `H`. -/
-def runWithH (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) : m Outcome := do
-  let seed ← H (name ++ iv ++ publicInput)
+def runWithH (s : Spec) (iv publicInput : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    m Outcome := do
+  let seed ← H (name ++ iv ++ publicInput ++ (frameReads s.reads).flatMap frameAt)
   let walk : ChanM m Reduced := do
-    let r ← reduceWithH H s (UniStatement.publicWordsOf publicInput)
+    let r ← reduceWithH H s (UniStatement.publicWordsOf publicInput) frameAt
     UniStatement.finish (m := m)
     return r
   let (result, chan) ← (walk.run).run (Chan.start seed stream)
@@ -100,14 +103,16 @@ def contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UI
     (proof : RecProof) : m (Bool × List (List (List UInt8))) := do
   let c := D.circuitAt roots.pi1
   let iv ← ivOfH H D roots
-  let o ← runWithH H (Spec.of c.circuit) iv input.toList proof.stream
+  let o ← runWithH H (Spec.of c.circuit) iv input.toList (frameOf proof.pi1Claims) proof.stream
   match o.result with
   | .error _ => return (false, [])
   | .ok r =>
     if !o.accepts then return (false, []) else
-    let calls := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood
+    let enc := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood
       proof.stream r
-    if calls.length ≠ 8 then return (false, calls) else
+    if !encodedDeclared c.circuit (enc.take D.pi1Calls.length) proof.pi1Claims then return (false, []) else
+    let calls := proof.pi1Claims ++ enc.drop D.pi1Calls.length
+    if calls.length ≠ 7 then return (false, calls) else
     let mut ok := true
     for (words, p) in calls.zip proof.openings do
       ok := ok && (← pcsOpenWordsH H F words p)
@@ -135,7 +140,7 @@ def setupTreesWithH (_F : KeccakState → m KeccakState) (D : RecDeployment) : m
 /-- `pi1GraphVerifierWith` with Keccak-256 `H`. -/
 def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) : m Bool := do
-  match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList proof.stream with
+  match RecGraph.evalGraphDeployed (pi1GraphAt roots) (D.pi1IvAt roots) input.toList proof.stream with
   | none => return false
   | some out =>
     if !(out.zeros.all (· == 0) && out.nonzeros.all (· != 0)) then return false
@@ -143,7 +148,6 @@ def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (i
     | none => return false
     | some ops =>
       if ops.length ≠ 3 then return false
-      let ops := ops.modify 2 fun o ↦ (roots.f, roots.fOod, o.2.2)
       let mut ok := true
       for ((o, c), p) in (ops.zip UniStatement.commitments).zip [proof.c1, proof.c2, proof.setup] do
         ok := ok && (← UniKeccakComplete.pcsOpenKH H F (UniKeccak.stackVarsK D.pi1.shape c) o.1 o.2.1 o.2.2.1
@@ -174,11 +178,11 @@ theorem ivWith_eqH (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List 
     RecStatement.ivWith F pi1Iv setupRoot setupOod digest logN =
       ivWithH (keccak256With F) pi1Iv setupRoot setupOod digest logN := rfl
 
-theorem reduceWith_eqH (s : Spec) (statement : List E) :
-    reduceWith F s statement = reduceWithH (keccak256With F) s statement := rfl
+theorem reduceWith_eqH (s : Spec) (statement : List E) (frameAt : ℕ → List UInt8) :
+    reduceWith F s statement frameAt = reduceWithH (keccak256With F) s statement frameAt := rfl
 
-theorem runWith_eqH (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) :
-    runWith F s iv publicInput stream = runWithH (keccak256With F) s iv publicInput stream := rfl
+theorem runWith_eqH (s : Spec) (iv publicInput : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    runWith F s iv publicInput frameAt stream = runWithH (keccak256With F) s iv publicInput frameAt stream := rfl
 
 theorem digestWith_eqH (c : Pi2Circuit) : c.digestWith F = digestWithH (keccak256With F) c := rfl
 
@@ -275,12 +279,13 @@ theorem reads_sampleH (H : List UInt8 → m Digest) : Reads (UniKeccakComplete.s
   rw [sampleH_run]
   exact holds_map (holds_true _) fun st _ ↦ ⟨rfl, fun a _ ↦ ⟨rfl, trivial⟩, fun _ ↦ ⟨_, rfl⟩⟩
 
-theorem reads_reduceWithH (H : List UInt8 → m Digest) (s : RecStatement.Spec) (stmt : List E) :
-    Reads (reduceWithH H s stmt) (pi2Bytes s) fun d cur r ↦
-      r.scalars = foldReads RecStatement.Read.bytes pubsStep d cur s.reads stmt ∧
+theorem reads_reduceWithH (H : List UInt8 → m Digest) (s : RecStatement.Spec) (stmt : List E)
+    (frameAt : ℕ → List UInt8) :
+    Reads (reduceWithH H s stmt frameAt) (pi2Bytes s) fun d cur r ↦
+      r.scalars = foldReads RecStatement.Read.bytes (pubsStep frameAt) d cur s.reads stmt ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint := by
   unfold reduceWithH
-  refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes pubsStep _ (fun rd b ↦ ?_) s.reads stmt)
+  refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes (pubsStep frameAt) _ (fun rd b ↦ ?_) s.reads stmt)
     fun pubs _ ↦
       reads_bind reads_nextRoot fun wRoot _ ↦
       reads_bind reads_nextScalar fun wOod _ ↦
@@ -310,24 +315,34 @@ theorem reads_reduceWithH (H : List UInt8 → m Digest) (s : RecStatement.Spec) 
       rintro d cur st ⟨x, hx, hst⟩
       subst hx hst
       rfl
+    | narrow =>
+      refine reads_mono (reads_bind reads_nextNarrow fun x _ ↦ reads_pure _) rfl ?_
+      rintro d cur st ⟨x, hx, hst⟩
+      subst hx hst
+      rfl
+    | frame p =>
+      refine reads_mono (reads_pure _) rfl ?_
+      rintro d cur st hst
+      subst hst
+      rfl
   · rintro d cur r ⟨pubs, hpubs, w, -, wo, -, α, -, β, -, γ, -, q, -, qo, -, t, -, a, -, ξ, -, sv, -, ρ, -, hr⟩
     subst hr
     exact ⟨hpubs, rfl⟩
 
 /-- **`runWith_post` at any `H`.** -/
 theorem runWithH_post (H : List UInt8 → m Digest) (s : RecStatement.Spec) (iv input : List UInt8)
-    (stream : Array UInt8) :
-    Holds (runWithH H s iv input stream) fun o ↦
-      (∀ r, o.result = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input stream ∧
+    (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    Holds (runWithH H s iv input frameAt stream) fun o ↦
+      (∀ r, o.result = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input frameAt stream ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint) ∧
       (stream.size = pi2Bytes s → ∃ r, o.result = .ok r) := by
   unfold runWithH
   refine holds_bind (holds_true _) fun seed _ ↦ holds_bind (Q := fun p ↦
-    (∀ r, p.1 = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input stream ∧
+    (∀ r, p.1 = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input frameAt stream ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint) ∧
       (stream.size = pi2Bytes s → ∃ r, p.1 = .ok r)) ?_ fun p hp ↦ ?_
   · rw [ExceptT.run_bind, StateT.run_bind]
-    refine holds_bind (reads_reduceWithH H s (UniStatement.publicWordsOf input) (Chan.start seed stream)) ?_
+    refine holds_bind (reads_reduceWithH H s (UniStatement.publicWordsOf input) frameAt (Chan.start seed stream)) ?_
     rintro ⟨e, c'⟩ ⟨hd, hok, hfit⟩
     simp only [Chan.start] at hd hok hfit
     cases e with

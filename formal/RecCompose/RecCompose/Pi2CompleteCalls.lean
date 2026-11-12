@@ -10,9 +10,9 @@ import UniKeccakComplete.K.ProverCost
 import E2ECompleteness.Grinding
 
 /-!
-# π2's five claims decoded
+# π2's four claims decoded
 
-The contract's last five claims (`pcsCalls`: `W`'s, the setup's, `Q`'s identity, pushes' and sum claims) are each a PCS
+The contract's last four claims (`pcsCalls`: `W`'s, the setup's, `Q`'s identity and pushes' claims) are each a PCS
 claim's words: the root's 32 bytes, the out-of-domain answer's element word, the point's coordinates and the value as
 element words (`claimWords`). They decode (`claimOfWords`) to the root those bytes name, the answer, the point and the
 value (**`claimOfWords_claim`**). A root the stream carries as the prover sends it (`rootHalves`, its bytes as they

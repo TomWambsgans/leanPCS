@@ -142,7 +142,7 @@ theorem run_cells (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : 
     (hx : x < 2 ^ G.logW) :
     (S.run inp).cells.getD x 0 = cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t x := by
   have h1n : 1 ≤ n := by have := hV.logW_lt; have := hS.hn; omega
-  show (cellsList S.ω (digitsList inp.t (S.logN + 2)) S.logRow inp.a).getD x 0 = _
+  show (cellsList S.ω (digitsList inp.t (S.logN + 1)) S.logRow inp.a).getD x 0 = _
   rw [hS.omega, hS.logRow]
   refine cellsList_eq_cellsOf (Heap.omega B) (omega_odd h1n) inp.t _ (fun l hl ↦ digitsList_getD inp.t ?_) inp.a hx
   have := hV.logW_lt; rw [hS.logN]; omega
@@ -223,9 +223,9 @@ theorem push_side (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : 
   have hW : 0 < 2 ^ G.logW := Nat.two_pow_pos _
   have hcell : ∀ x < 2 ^ G.logW, cells.getD x 0 = v x := fun x hx ↦ run_cells hS hV inp hx
   -- the digits the run reads
-  have hwmR : (digitsList inp.t (S.logN + 2)).getD S.logN 0 = wm := by
+  have hwmR : (digitsList inp.t (S.logN + 1)).getD S.logN 0 = wm := by
     rw [digitsList_getD inp.t (by omega), hS.logN]
-  have hwrR : (digitsList inp.t (S.logN + 2)).getD S.logRow 0 = QuotientSecurity.sq^[G.logW] inp.t := by
+  have hwrR : (digitsList inp.t (S.logN + 1)).getD S.logRow 0 = QuotientSecurity.sq^[G.logW] inp.t := by
     rw [digitsList_getD inp.t (by rw [hS.logRow, hS.logN]; have := hV.logW_lt; omega), hS.logRow]
   -- the pairs' denominators and indicators
   have hdi : ∀ i < S.pairs.length, d i ≠ 0 ∧ (G.ind (Heap.omega B) (pairOf i)).eval inp.t = wm / d i :=
@@ -252,9 +252,9 @@ theorem push_side (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : 
     rfl
   -- the `Φ` fractions
   set wPhi := ((S.phi.map fun kt ↦ (kt.1, phiFrac S.ω gs inp.scalars
-    ((digitsList inp.t (S.logN + 2)).getD S.logRow 0) kt.2)).map fun knd ↦
-      (knd.1, (digitsList inp.t (S.logN + 2)).getD S.logN 0 * knd.2.1, knd.2.2)) with hwPhi
-  have hphiDen : ∀ kt ∈ S.phi, ∀ yl ∈ kt.2, (digitsList inp.t (S.logN + 2)).getD S.logRow 0 + S.ω yl.1 ≠ 0 := by
+    ((digitsList inp.t (S.logN + 1)).getD S.logRow 0) kt.2)).map fun knd ↦
+      (knd.1, (digitsList inp.t (S.logN + 1)).getD S.logN 0 * knd.2.1, knd.2.2)) with hwPhi
+  have hphiDen : ∀ kt ∈ S.phi, ∀ yl ∈ kt.2, (digitsList inp.t (S.logN + 1)).getD S.logRow 0 + S.ω yl.1 ≠ 0 := by
     intro kt hkt yl hyl
     rw [hwrR, hS.omega]
     exact phiDen_ne_zero hS hV ht (phiTerm_row_lt hS hV (mem_phiTerms hkt hyl))
@@ -273,7 +273,7 @@ theorem push_side (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : 
     | some kt =>
       have hkt := List.mem_of_find?_eq_some hf
       have hpf := phiFrac_spec S.ω gs inp.scalars _ kt.2 (hphiDen kt hkt)
-      have hd0 : (phiFrac S.ω gs inp.scalars ((digitsList inp.t (S.logN + 2)).getD S.logRow 0) kt.2).2 ≠ 0 := by
+      have hd0 : (phiFrac S.ω gs inp.scalars ((digitsList inp.t (S.logN + 1)).getD S.logRow 0) kt.2).2 ≠ 0 := by
         rw [hpf.1]
         exact List.prod_ne_zero fun h0 ↦ by
           obtain ⟨yl, hyl, he⟩ := List.mem_map.mp h0
