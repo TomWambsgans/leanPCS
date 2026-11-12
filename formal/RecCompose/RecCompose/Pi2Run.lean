@@ -5,11 +5,12 @@ import RecCompose.Chan
 /-!
 # π2's run: its public data and its success do not depend on the hashes
 
-`RecStatement.runWith F s iv input stream`, over any lawful monad and any permutation `F`, at any IV: it succeeds exactly
-when the stream has `pi2Bytes s` bytes (π2's public data, `W`'s and `Q`'s roots and out-of-domain answers, the `2^r` fold values, `ξ` and `s`; the
-challenges read none), and then its public scalars are `pi2Pubs s input stream` (the statement's four words, then the
-public reads at their offsets) and its pair points theirs (`runWith_post`). So the run over the permutation and the
-run over Keccak-f[1600] at any other IV (`RecStatement.run`) agree on them (`run_ok_of_runWith`).
+`RecStatement.runWith F s iv input frameAt stream`, over any lawful monad and any permutation `F`, at any IV: it
+succeeds exactly when the stream has `pi2Bytes s` bytes (π2's public data, `W`'s and `Q`'s roots and out-of-domain
+answers, the `2^r` fold values, `ξ` and `s`; the challenges and the frame reads read none), and then its public scalars
+are `pi2Pubs s input frameAt stream` (the statement's four words, then the public reads: a stream read at its offset, a
+frame read `.frame p` the four words of `frameAt p`) and its pair points theirs (`runWith_post`). So the run over the
+permutation and the run over Keccak-f[1600] at any other IV (`RecStatement.run`) agree on them (`run_ok_of_runWith`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -18,19 +19,23 @@ namespace RecCompose
 
 open UniStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 
-/-- A public read's scalars, at `cur`. -/
-def readValue (d : Array UInt8) (cur : ℕ) : RecStatement.Read → List E
+/-- A public read's scalars, at `cur` (a frame read's: its payload's four words). -/
+def readValue (frameAt : ℕ → List UInt8) (d : Array UInt8) (cur : ℕ) : RecStatement.Read → List E
   | .integer b => [eK (UInt64.ofNat (integerAt d cur b))]
   | .root => [halfAt d cur, halfAt d (cur + 16)]
   | .scalar => [scalarAt d cur]
+  | .narrow => [narrowAt d cur]
+  | .frame p => publicWordsOf (frameAt p)
 
 /-- The public scalars after a read at `cur`. -/
-def pubsStep (d : Array UInt8) (cur : ℕ) (rd : RecStatement.Read) (pubs : List E) : List E :=
-  pubs ++ readValue d cur rd
+def pubsStep (frameAt : ℕ → List UInt8) (d : Array UInt8) (cur : ℕ) (rd : RecStatement.Read) (pubs : List E) :
+    List E :=
+  pubs ++ readValue frameAt d cur rd
 
-/-- **π2's public scalars** on a stream: the statement's four words, then each public read at its offset. -/
-def pi2Pubs (s : RecStatement.Spec) (input : List UInt8) (stream : Array UInt8) : List E :=
-  foldReads RecStatement.Read.bytes pubsStep stream 0 s.reads (publicWordsOf input)
+/-- **π2's public scalars** on a stream and a frame: the statement's four words, then each public read (at its offset,
+or its payload's words). -/
+def pi2Pubs (s : RecStatement.Spec) (input : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) : List E :=
+  foldReads RecStatement.Read.bytes (pubsStep frameAt) stream 0 s.reads (publicWordsOf input)
 
 /-- **The bytes π2's verifier reads**: the public reads, `W`'s and `Q`'s roots, the `2^r` fold values and `ξ`. -/
 def pi2Bytes (s : RecStatement.Spec) : ℕ :=
@@ -40,12 +45,13 @@ section Generic
 
 variable {m : Type → Type} [Monad m] [LawfulMonad m]
 
-theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.Spec) (stmt : List E) :
-    Reads (RecStatement.reduceWith F s stmt) (pi2Bytes s) fun d cur r ↦
-      r.scalars = foldReads RecStatement.Read.bytes pubsStep d cur s.reads stmt ∧
+theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.Spec) (stmt : List E)
+    (frameAt : ℕ → List UInt8) :
+    Reads (RecStatement.reduceWith F s stmt frameAt) (pi2Bytes s) fun d cur r ↦
+      r.scalars = foldReads RecStatement.Read.bytes (pubsStep frameAt) d cur s.reads stmt ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint := by
   unfold RecStatement.reduceWith
-  refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes pubsStep _ (fun rd b ↦ ?_) s.reads stmt)
+  refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes (pubsStep frameAt) _ (fun rd b ↦ ?_) s.reads stmt)
     fun pubs _ ↦
       reads_bind reads_nextRoot fun wRoot _ ↦
       reads_bind reads_nextScalar fun wOod _ ↦
@@ -75,6 +81,16 @@ theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.S
       rintro d cur st ⟨x, hx, hst⟩
       subst hx hst
       rfl
+    | narrow =>
+      refine reads_mono (reads_bind reads_nextNarrow fun x _ ↦ reads_pure _) rfl ?_
+      rintro d cur st ⟨x, hx, hst⟩
+      subst hx hst
+      rfl
+    | frame p =>
+      refine reads_mono (reads_pure _) rfl ?_
+      rintro d cur st hst
+      subst hst
+      rfl
   · rintro d cur r ⟨pubs, hpubs, w, -, wo, -, α, -, β, -, γ, -, q, -, qo, -, t, -, a, -, ξ, -, sv, -, ρ, -, hr⟩
     subst hr
     exact ⟨hpubs, rfl⟩
@@ -82,18 +98,18 @@ theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.S
 /-- **π2's run, over any permutation, at any IV**: it succeeds exactly when the stream has `pi2Bytes s` bytes, and then
 its public scalars are `pi2Pubs` and its pair points theirs. -/
 theorem runWith_post (F : KeccakState → m KeccakState) (s : RecStatement.Spec) (iv input : List UInt8)
-    (stream : Array UInt8) :
-    Holds (RecStatement.runWith F s iv input stream) fun o ↦
-      (∀ r, o.result = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input stream ∧
+    (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    Holds (RecStatement.runWith F s iv input frameAt stream) fun o ↦
+      (∀ r, o.result = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input frameAt stream ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint) ∧
       (stream.size = pi2Bytes s → ∃ r, o.result = .ok r) := by
   unfold RecStatement.runWith
   refine holds_bind (holds_true _) fun seed _ ↦ holds_bind (Q := fun p ↦
-    (∀ r, p.1 = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input stream ∧
+    (∀ r, p.1 = .ok r → stream.size = pi2Bytes s ∧ r.scalars = pi2Pubs s input frameAt stream ∧
         r.pairPoints = r.scalars.map RecStatement.pairPoint) ∧
       (stream.size = pi2Bytes s → ∃ r, p.1 = .ok r)) ?_ fun p hp ↦ ?_
   · rw [ExceptT.run_bind, StateT.run_bind]
-    refine holds_bind (reads_reduceWith F s (publicWordsOf input) (Chan.start seed stream)) ?_
+    refine holds_bind (reads_reduceWith F s (publicWordsOf input) frameAt (Chan.start seed stream)) ?_
     rintro ⟨e, c'⟩ ⟨hd, hok, hfit⟩
     simp only [Chan.start] at hd hok hfit
     cases e with
@@ -129,11 +145,12 @@ end Generic
 /-- **The run over the permutation and the run over Keccak-f[1600] agree on the public data**: if π2's run over any `F`
 at any IV succeeds, so does `RecStatement.run` at any IV, with the same public scalars and pair points. -/
 theorem run_ok_of_runWith {m : Type → Type} [Monad m] [LawfulMonad m] (s : RecStatement.Spec) (input : List UInt8)
-    (stream : Array UInt8) (iv' : List UInt8) (r : RecStatement.Reduced) (hsz : stream.size = pi2Bytes s)
-    (hsc : r.scalars = pi2Pubs s input stream) (hpp : r.pairPoints = r.scalars.map RecStatement.pairPoint) :
-    ∃ r', (RecStatement.run s iv' input stream).result = .ok r' ∧ r'.scalars = r.scalars ∧
+    (frameAt : ℕ → List UInt8) (stream : Array UInt8) (iv' : List UInt8) (r : RecStatement.Reduced)
+    (hsz : stream.size = pi2Bytes s) (hsc : r.scalars = pi2Pubs s input frameAt stream)
+    (hpp : r.pairPoints = r.scalars.map RecStatement.pairPoint) :
+    ∃ r', (RecStatement.run s iv' input frameAt stream).result = .ok r' ∧ r'.scalars = r.scalars ∧
       r'.pairPoints = r.pairPoints := by
-  have h := holds_id (runWith_post (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv' input stream)
+  have h := holds_id (runWith_post (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv' input frameAt stream)
   obtain ⟨r', hr'⟩ := h.2 hsz
   obtain ⟨-, hsc', hpp'⟩ := h.1 r' hr'
   exact ⟨r', hr', by rw [hsc', hsc], by rw [hpp', hpp, hsc', hsc]⟩

@@ -11,9 +11,9 @@ import E2ECompleteness.PcsStaging
 
 Before `α` and between `γ` and `t` the honest run hashes Merkle leaves (a row of `64` words of `K`,
 `512` bytes), Merkle nodes (two digests, `64` bytes), out-of-domain inputs (`oodInput`, `46` bytes)
-and the label (`136` bytes): never `32`, `128`, `320` or `192` bytes, the lengths of the chain's
-queries (`Good4`). Between `t` and `ρ` (stage C) it hashes the label and the chain's own inputs
-(`128`, `32`, `320` bytes): never `192` (`GoodC`).
+and the label (`136` bytes): never `32`, `128` or `160` bytes, the lengths of the chain's queries
+(`Good4`). Between `t` and `ρ` (stage C) it hashes the label and the chain's own inputs (`128`, `32` bytes):
+never `160` (`GoodC`).
 
 **`hashOK_stageAG`**, **`hashOK_stageBG`**, **`hashOK_stageCG`**, **`hashOK_setupWithH`**.
 -/
@@ -48,7 +48,7 @@ def CommitLen (m : Bytes) : Prop :=
 
 theorem good4_of_commitLen {m : Bytes} (h : CommitLen m) : Good4 m := by
   unfold CommitLen at h
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> omega
+  refine ⟨?_, ?_, ?_⟩ <;> omega
 
 /-! ## Lengths -/
 
@@ -81,7 +81,7 @@ theorem length_oodInput (n : ℕ) (root : Digest) (j : ℕ) : (oodInput n root j
 theorem length_label (index : Commitment) (stmt : Statement) : (label index stmt).length = 136 := by
   simp only [label, List.length_append, length_digestBytes, length_elementBytes,
     Vector.length_toList]
-  have h16 : "pcs-quotient-kc1".toUTF8.toList.length = 16 := by decide +kernel
+  have h16 : protocolName.length = 16 := by unfold protocolName; decide +kernel
   omega
 
 /-! ## The commitments -/
@@ -155,21 +155,17 @@ theorem hashOK_stageAG (setup : OracleComp KeccakCalls (Tree × Commitment))
     fun _ ↦ HashOK.pure _ _
 
 /-- **The second stage hashes nothing of the chain's lengths.** -/
-theorem hashOK_stageBG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) :
-    ∀ a s₁ s₂ s₃, HashOK Good4 (stageBG circuit cells₀ coins a s₁ s₂ s₃) := by
+theorem hashOK_stageBG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (stmt : Statement) :
+    ∀ a s₁ s₂ s₃, HashOK Good4 (stageBG circuit cells₀ coins stmt a s₁ s₂ s₃) := by
   have hP : ∀ m, CommitLen m → Good4 m := fun _ h ↦ good4_of_commitLen h
   intro a s₁ s₂ s₃
   unfold stageBG
   refine HashOK.bind (hashOK_commitmentWithH hP _ _) fun x ↦ ?_
   rcases x with ⟨_, _⟩
-  refine HashOK.bind (hashOK_commitmentWithH hP _ _) fun y ↦ ?_
-  rcases y with ⟨_, _⟩
-  refine HashOK.bind (hashOK_commitmentWithH hP _ _) fun z ↦ ?_
-  rcases z with ⟨_, _⟩
   exact HashOK.pure _ _
 
 /-- **The third stage hashes nothing of `ρ`'s length**: the label (`136` bytes) and the chain's own
-inputs (`128`, `32`, `32`, `320` bytes). -/
+inputs (`128`, `32`, `32`, `128` bytes). -/
 theorem hashOK_stageCG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (stmt : Statement) :
     ∀ a b s₁ s₂ s₃ s₄, HashOK GoodC (stageCG circuit cells₀ coins stmt a b s₁ s₂ s₃ s₄) := by
   intro a b s₁ s₂ s₃ s₄
@@ -177,11 +173,11 @@ theorem hashOK_stageCG (circuit : Circuit) (cells₀ : Array K) (coins : Coins) 
   refine HashOK.bind (hashOK_callKeccak256 ?_) fun _ ↦ HashOK.bind (hashOK_callKeccak256 ?_)
     fun _ ↦ HashOK.bind (hashOK_callKeccak256 ?_) fun _ ↦ HashOK.bind (hashOK_callKeccak256 ?_)
     fun _ ↦ HashOK.bind (hashOK_callKeccak256 ?_) fun _ ↦ HashOK.pure _ _
-  · show (label _ _).length ≠ 192; rw [length_label]; omega
-  · show (in3 _ _).length ≠ 192; rw [length_in3]; omega
-  · show (digestBytes _).length ≠ 192; rw [length_digestBytes]; omega
-  · show (digestBytes _).length ≠ 192; rw [length_digestBytes]; omega
-  · show (in9 _ _).length ≠ 192; rw [length_in9]; omega
+  · show (label _ _).length ≠ 160; rw [length_label]; omega
+  · show (in3 _ _).length ≠ 160; rw [length_in3]; omega
+  · show (digestBytes _).length ≠ 160; rw [length_digestBytes]; omega
+  · show (digestBytes _).length ≠ 160; rw [length_digestBytes]; omega
+  · show (in3 _ _).length ≠ 160; rw [length_in3]; omega
 
 /-- info: 'E2ECompleteness.Pcs.hashOK_stageAG' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms hashOK_stageAG

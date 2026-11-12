@@ -82,12 +82,18 @@ the two terms events of one experiment (the verifier reads the point off the ora
 
 ```sh
 cargo run --release -p pcs_claim --example lean_vector > target/pcs_claim_vector.txt   # n = 15, 16, 18
+cargo test -p quotient --release --test whir_bridge_vector -- --ignored                # a 2^15-word table; a membership proof's three
+cargo test --release -p quotient --test whir_large_params -- --ignored large_public_openings   # 2^24 .. 2^WHIR_LARGE_MAX words
 (cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/pcs_claim_vector.txt)
+(cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/whir_bridge_vector.txt)
+(cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/whir_large_vector.txt)
 ```
 
-`Test/CheckPcs.lean` recomputes `PCS_claim`'s bytes, its Keccak-256 and the out-of-domain point, accepts the honest
-proof, and rejects a wrong value, a wrong out-of-domain answer, a wrong root, a changed stream scalar, a changed leaf
-word, and the honest proof against another out-of-domain point: `3 PCS openings; all checks: true`.
+All three writers use `pcs_claim::lean::pcs_vector`. `Test/CheckPcs.lean` recomputes `PCS_claim`'s bytes, its
+Keccak-256 and the out-of-domain point, accepts the honest proof, and rejects a wrong value, a wrong out-of-domain
+answer, a wrong root, a changed stream scalar, a changed leaf word, and the honest proof against another out-of-domain
+point: `all checks: true` on the three files (2026-11-11: `3 PCS openings`; `4 PCS openings`, the membership proof's
+witness and wiring claims at `n = 19` and its copy claim at `n = 23` on a `2^17`-row circuit; `5 PCS openings` at `2^24 .. 2^28`, `WHIR_LARGE_MAX=28`).
 
 ## WHIR's parameters at `2^24 ..= 2^28`
 
@@ -123,10 +129,9 @@ import them:
   `Layout.Valid` (`Layout.new_valid`) and sound at `openingBound`; `joint_public_large`.
 - The guarantee is joint within one opening only (no out-of-domain sample at level 0): claims on one root split over
   two openings could get different list members. Version 1's out-of-domain answer removes this restriction.
-- **The tests are stale**: `crates/membership/quotient/tests/whir_bridge_vector.rs` and `whir_large_params.rs`'s
-  `large_public_openings` now write PCS-claim vectors, while `Test/Check.lean` and `Test/CheckLarge.lean` read layout
-  vectors; they last passed against the Rust of the layout openings (`all checks: true`). Only `Test/CheckPcs.lean` is
-  current ([`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)).
+- **No executed test**: the layout openings' checks (`Test/Check.lean`, `Test/CheckLarge.lean`) were removed with
+  the Rust's layout openings (the writers now write PCS-claim vectors, which `Test/CheckPcs.lean` checks); they last
+  passed against the Rust of the layout openings (git history).
 
 ## Assumptions and gaps
 

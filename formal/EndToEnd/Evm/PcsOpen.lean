@@ -6,7 +6,7 @@ import Implementation.Verifier
 /-!
 # A declared PCS claim, and what the block proves of it
 
-The contract checks that its transaction declares six PCS claims (`Implementation.calls`): payload `k` of
+The contract checks that its transaction declares three PCS claims (`Implementation.calls`): payload `k` of
 the frame of PCS claims is the Keccak-256 of claim `k`'s bytes, `1 ‖ n ‖ root ‖ ood ‖ point ‖ value`. The
 block proves a declared claim by verifying an opening of it (the EIP draft's `pcs_verify`).
 
@@ -51,14 +51,11 @@ def decodeClaim : List UInt8 → Option (Commitment × Claim)
   | _ => none
 
 /-- The opening the block carries for payload `k`: the proof's opening of claim `k`, in the order of
-`Claims::all`. -/
+`Claims::on`. -/
 def openingFor (o : Openings) : ℕ → Compile.Proof
   | 0 => o.witness
   | 1 => o.wiring
-  | 2 => o.h
-  | 3 => o.q
-  | 4 => o.g
-  | _ => o.sum
+  | _ => o.copy
 
 /-- **What the block proves of declared claim `k`**: the claim as the block reads it (`decodeClaim`),
 checked by the Statement's opening check (`PcsQuotient.pcsOpening`, over Keccak-f[1600]) with the block's

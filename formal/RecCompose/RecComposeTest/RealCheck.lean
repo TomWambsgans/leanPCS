@@ -5,14 +5,17 @@ import RecCompose.RealDeployment
 # The real deployment's checks, evaluated
 
 `rec-real-check` (compiled code; no kernel evaluation) evaluates the run-checked `Prop`s of
-`RecCompose/RealDeployment.lean` for the Keccak VM's π1-rec3 at 128 signatures (the compiler on
-`RecGraphKeccak.Emitted.graph`), each as the very expression it names:
+`RecCompose/RealDeployment.lean` for the Keccak VM's π1-rec4 at 128 signatures (the compiler on
+`RecGraphKeccak.Emitted.graph` at the reference setup commitment, `emittedAt realRoots`, π1's claims `Data.hashed`
+hashed in the circuit), each as the very expression it names:
 
-* `DigestChecked`: its left side at `pi2CircuitOf refCompiled.circuit`, which is `realPi2 Data.pi1Iv` (`realPi2_ref`,
+* π1's reference IV: `realIv realRoots` (the Lean's `pi1Iv` at the reference) against the Rust's `Data.pi1Iv`;
+* `DigestChecked`: its left side at `pi2CircuitOf refCompiled.circuit`, which is `realPi2 realRoots` (`realPi2_ref`,
   `rfl`; the digest `RecDeployment.Real` names, of the Lean compiler's `σ`, `κ` at π1's reference IV), against
   `Data.digest`;
-* `IvChecked` at three 32-byte IVs: `ivCheck iv` at π1's reference IV (`Data.pi1Iv`), the zero IV and the all-ones IV
-  (the compile, `viewCheck`, `streamAgree` with the reference IV's circuit);
+* `IvChecked` at the reference setup commitment and three 32-byte IVs: `ivCheck realRoots iv` at π1's reference IV
+  (`Data.pi1Iv`), the zero IV and the all-ones IV (the compile, `viewCheck`, `streamAgree` with the reference IV's
+  circuit);
 * with `--setup`: also `SetupRootChecked`, its left side likewise (the WHIR commitment of the `2^25`-word setup
   table) against `Data.setupRoot`; with `--setup-only`, that alone.
 
@@ -49,6 +52,10 @@ def main (args : List String) : IO UInt32 := do
     logN {refCompiled.circuit.logN} (at {← since} ms)"
   flush
   if !only then
+    let ivb := decide (realIv realRoots = Data.pi1Iv)
+    IO.println s!"realIv realRoots = Data.pi1Iv: {ivb} ({hexOf (realIv realRoots)}; at {← since} ms)"
+    flush
+    ok := ok && ivb
     if !args.contains "--no-digest" then
       let d := Id.run ((pi2CircuitOf refCompiled.circuit).digestWith (m := Id)
         fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))
@@ -57,7 +64,7 @@ def main (args : List String) : IO UInt32 := do
       flush
       ok := ok && b
     for (_, label, iv) in chosen do
-      let v := ivCheck iv
+      let v := ivCheck realRoots iv
       IO.println s!"IvChecked at the {label} ({iv.length} bytes): ivCheck {v} (at {← since} ms)"
       flush
       ok := ok && v

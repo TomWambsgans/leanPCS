@@ -33,6 +33,7 @@ def ofRGNode : RecGraph.Node → Node
   | .hash s f t => .hash s f t
   | .low h => .low h
   | .narrow h => .narrow h
+  | .wide h k => .wide h k
   | .bits v s w => .bits v s w
   | .ringWeight k n => .ringWeight k n
 
@@ -47,6 +48,7 @@ def toRGNode : Node → RecGraph.Node
   | .hash s f t => .hash s f t
   | .low h => .low h
   | .narrow h => .narrow h
+  | .wide h k => .wide h k
   | .bits v s w => .bits v s w
   | .ringWeight k n => .ringWeight k n
 
@@ -77,13 +79,23 @@ def Node.isState : Node → Bool
   | .seed | .hash .. => true
   | _ => false
 
-/-- **Node `i` is well typed**: it reads only earlier nodes; a hash, a challenge and a narrow challenge read a state;
+/-- A hash node: what a wide challenge reads (its sponge's rate). -/
+def Node.isHash : Node → Bool
+  | .hash .. => true
+  | _ => false
+
+/-- `transcript::WIDE_MAX`: a wide draw's challenges `0 … 4` (`0` is `low`). -/
+def WIDE_MAX : ℕ := 5
+
+/-- **Node `i` is well typed**: it reads only earlier nodes; a hash, a challenge and a narrow challenge read a state, a
+wide challenge `k` (`1 ≤ k < WIDE_MAX`) a hash;
 a sum, a product, a bit field and a ring weight read elements; a ring weight's kernel has `2n + 6` operands (the
 point's `n` coordinates, `1 + r`'s `n`, the map's `towerStages = 6` stages). -/
 def Graph.typedAt (g : Graph) (i : ℕ) : Node → Bool
   | .add a b | .mul a b => a < i && b < i && !(g.nodes.getD a default).isState && !(g.nodes.getD b default).isState
   | .bits v _ _ => v < i && !(g.nodes.getD v default).isState
   | .hash s _ _ | .low s | .narrow s => s < i && (g.nodes.getD s default).isState
+  | .wide h k => h < i && (g.nodes.getD h default).isHash && 1 ≤ k && k < WIDE_MAX
   | .ringWeight k n => (g.kernels.getD k []).all (fun a => a < i && !(g.nodes.getD a default).isState) &&
       (g.kernels.getD k []).length == 2 * n + 6
   | _ => true
@@ -113,6 +125,7 @@ def expandNode (kernels : Array (List ℕ)) (map : Array ℕ) (st : RecGraph.Rec
   | .hash s f t => pure (st.new (.hash (m s) f t))
   | .low h => pure (st.new (.low (m h)))
   | .narrow h => pure (st.new (.narrow (m h)))
+  | .wide h k => pure (st.new (.wide (m h) k))
   | .bits v shift width =>
     match st.constAt (m v) with
     | some x =>

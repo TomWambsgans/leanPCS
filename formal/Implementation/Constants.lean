@@ -7,12 +7,12 @@ import Implementation.Formula
 /-!
 # The graph's constants are the Statement's
 
-The constants the graph carries (`Graph.lean`, written by the Rust: `beta`, `coords`, `tau`, `y0`,
-`y1`, `scale`, and the slopes `1 + coordinate_weight(k)` that `Program.slopeConst` names) are the
-elements the Statement computes (`PcsQuotient.Domain.betaAt`, `coordinates 11`, `rowVanishing 24`,
-`extension`, `coordinateWeight`): the words by kernel evaluation (`beta_lanes`, `coords_lanes`,
-`tau_lanes`, the last through `Tau.lean`'s elimination steps), the extension's three elements by their
-defining products (`mulE` evaluated), the slopes by evaluation in `E`.
+The constants the graph carries (`Graph.lean`, written by the Rust: `beta`, `tau`, `pinPoints`,
+`pinWeights`, `y0`, `y1`, `scale`) are the elements the Statement computes (`PcsQuotient.Domain.betaAt`,
+`rowVanishing 24`, `pinPoints`, `pinWeights`, `extension`): the words by kernel evaluation (`beta_lanes`,
+`tau_lanes` through `Tau.lean`'s elimination steps, `pinPoints_lanes`), the inverses (the pins' weights, the
+extension's three elements) by their defining products (`mulE` evaluated), and the constants `λ_k v_k` of the
+anchors of `1` and `3` (`elem_pinConst`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -80,15 +80,6 @@ theorem elem_theta : EL (Emitted.beta.getD 1 0) = ofK (betaAt 1) := by
 theorem elem_theta1 : EL (Emitted.beta.getD 1 0 ^^^ 1) = ofK (betaAt 1 + 1) := by
   rw [elem_xor isF192_primitives, elem_theta, elem_one isF192_primitives, ofK_add, ofK_one]
 
-/-- **The coordinates' constants** are the graph's. -/
-theorem coords_lanes : (coordinates region).map K.lane = Emitted.coords.map Nat.toUInt64 := by
-  decide +kernel
-
-theorem coords_small : ∀ x ∈ Emitted.coords, x < 2 ^ 64 := by decide +kernel
-
-theorem elem_coords (d : ℕ) : EL (Emitted.coords.getD d 0) = ofK ((coordinates region).getD d 0) :=
-  elem_list coords_lanes coords_small d
-
 /-- **`rowVanishing 24`'s words** are the graph's `tau` (`Tau.lean`: the elimination, step by step). -/
 theorem tau_lanes : (rowVanishing 24).map K.lane = Emitted.tau.map Nat.toUInt64 := by
   rw [Tau.rowVanishing_24_lanes]
@@ -99,15 +90,73 @@ theorem tau_small : ∀ x ∈ Emitted.tau, x < 2 ^ 64 := by decide +kernel
 theorem elem_tau (k : ℕ) : EL (Emitted.tau.getD k 0) = ofK ((rowVanishing 24).getD k 0) :=
   elem_list tau_lanes tau_small k
 
-/-! ## The slopes -/
+/-! ## The pins -/
 
-/-- **`1 + coordinate_weight(k)`**, `k < 8`, is the graph's constant `slopeConst k`. -/
-theorem slopes : ∀ k < 8, (coordinateWeight k).map (1 + ·) = some (EL (slopeConst k)) := by
+/-- **The pins' points** are the graph's (kernel evaluation of the Statement's `point (anchorCell k)`). -/
+theorem pinPoints_lanes : PcsQuotient.pinPoints.map K.lane = Emitted.pinPoints.map Nat.toUInt64 := by
   decide +kernel
 
-theorem coordinateWeight_none {k : ℕ} (hk : ¬ k < 8) : coordinateWeight k = none := by
-  unfold coordinateWeight
-  simp only [show k ≠ 0 by omega, show k ≠ 1 by omega, hk, if_false]
+theorem pinPoints_small : ∀ x ∈ Emitted.pinPoints, x < 2 ^ 64 := by decide +kernel
+
+theorem elem_pinPoint (k : ℕ) : EL (Emitted.pinPoints.getD k 0) = ofK (PcsQuotient.pinPoints.getD k 0) :=
+  elem_list pinPoints_lanes pinPoints_small k
+
+/-- `Π_(j ≠ k) (p_k + p_j)` on the graph's words. -/
+def pinProd (k : ℕ) : ℕ :=
+  (List.range 11).foldl (fun acc j ↦ if j = k then acc else
+    mulE acc (Emitted.pinPoints.getD k 0 ^^^ Emitted.pinPoints.getD j 0)) 1
+
+/-- **The graph's pin weights invert the products** (`mulE` evaluated in the kernel). -/
+theorem pinWeights_mul : ∀ k < 11, mulE (Emitted.pinWeights.getD k 0) (pinProd k) = 1 := by
+  decide +kernel
+
+theorem ofK_mul (a b : K) : ofK (a * b) = ofK a * ofK b := map_mul (algebraMap K E) a b
+
+theorem fold_pinProd (k : ℕ) : ∀ (l : List ℕ) (a : K) (n : ℕ), ofK a = EL n →
+    ofK (l.foldl (fun acc j ↦ if j = k then acc else
+        acc * (PcsQuotient.pinPoints.getD k 0 + PcsQuotient.pinPoints.getD j 0)) a) =
+      EL (l.foldl (fun acc j ↦ if j = k then acc else
+        mulE acc (Emitted.pinPoints.getD k 0 ^^^ Emitted.pinPoints.getD j 0)) n)
+  | [], _, _, h => h
+  | j :: l, a, n, h => by
+    simp only [List.foldl_cons]
+    apply fold_pinProd k l
+    split_ifs
+    · exact h
+    · rw [ofK_mul, ofK_add, h, elem_mulE isF192_primitives, elem_xor isF192_primitives, elem_pinPoint,
+        elem_pinPoint]
+
+theorem pinWeights_getD (k : ℕ) (hk : k < 11) :
+    PcsQuotient.pinWeights.getD k 0 = ((List.range 11).foldl (fun acc j ↦ if j = k then acc else
+        acc * (PcsQuotient.pinPoints.getD k 0 + PcsQuotient.pinPoints.getD j 0)) 1)⁻¹ := by
+  simp [PcsQuotient.pinWeights, List.getD_eq_getElem?_getD, hk, publicRows, publicWords]
+
+/-- **The pins' Lagrange weights** are the graph's. -/
+theorem elem_pinWeight (k : ℕ) (hk : k < 11) :
+    EL (Emitted.pinWeights.getD k 0) = ofK (PcsQuotient.pinWeights.getD k 0) := by
+  have hp : ofK ((List.range 11).foldl (fun acc j ↦ if j = k then acc else
+        acc * (PcsQuotient.pinPoints.getD k 0 + PcsQuotient.pinPoints.getD j 0)) 1) = EL (pinProd k) :=
+    fold_pinProd k _ 1 1 (by rw [ofK_one, elem_one isF192_primitives])
+  have h1 : EL (Emitted.pinWeights.getD k 0) * EL (pinProd k) = 1 := by
+    rw [← elem_mulE isF192_primitives, pinWeights_mul k hk, elem_one isF192_primitives]
+  have hinv : ∀ x : K, ofK x⁻¹ = (ofK x)⁻¹ := fun x => map_inv₀ (algebraMap K E) x
+  rw [pinWeights_getD k hk, hinv, hp]
+  exact eq_inv_of_mul_eq_one_left h1
+
+theorem elem_three : EL 3 = ofK three := by
+  rw [elem_lane (by norm_num)]
+  rfl
+
+/-- The constants of anchors `9` and `10`, `λ_k · v_k`, are the graph's. -/
+theorem elem_pinConst (k : ℕ) (hk : 9 ≤ k ∧ k < 11) (words : List K) :
+    EL (mulE (Emitted.pinWeights.getD k 0) (if k = 9 then 1 else 3)) =
+      ofK (PcsQuotient.pinWeights.getD k 0 * anchorValues words k) := by
+  rw [elem_mulE isF192_primitives, elem_pinWeight k (by omega), ofK_mul]
+  congr 1
+  obtain ⟨h9, h11⟩ := hk
+  rcases (by omega : k = 9 ∨ k = 10) with rfl | rfl
+  · simp [anchorValues, publicWords, elem_one isF192_primitives, ofK_one]
+  · simp [anchorValues, publicWords, elem_three]
 
 /-! ## The extension -/
 

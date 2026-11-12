@@ -86,6 +86,9 @@ structure KeccakT where
   c : Array (Array Val)
   d : Array (Array Val)
   p : Array (Array (Array Val))
+  /-- The last round's planes made (`⌈lanes/5⌉`; 5 but for a last block whose caller reads fewer lanes): the other
+  planes' outputs in `a 24` are `NONE` (`UNMADE`). -/
+  lastPlanes : ℕ := 5
   deriving Inhabited
 
 /-- A Keccak-256 call: the message bits, then per block the permutation's input (`Bit`s, before its constants) and
@@ -97,6 +100,10 @@ structure SpongeT where
   /-- Per later block: the rate's 1088 bits as made (`Bit.v` the value given to the permutation). -/
   inputs : Array (Array Bit)
   digest : Array Val
+  /-- The lanes read of the last state (4: the digest; up to 17: a wide draw's rate). -/
+  lanes : ℕ := 4
+  /-- The last state's first `64 · lanes` values (`digest` its first 256). -/
+  out : Array Val := #[]
   deriving Inhabited
 
 /-- A packing: its `(exponent, bit)` input, its windows from the top, and its result. A window: its cells' values,
@@ -145,6 +152,8 @@ structure St where
   /-- Per value: its producing position, or `NONE` (free). -/
   producer : Array ℕ := #[]
   calls : List (List CallWord) := []
+  hashed : List ℕ := []
+  narrow : List ℕ := []
   -- `Constants`
   constUnits : Option Units := none
   spare : Array (ℕ × ℕ) := #[]
@@ -160,6 +169,10 @@ structure St where
   pool : Array (ℕ × ℕ) := #[]
   poolHead : ℕ := 0
   permutations : ℕ := 0
+  /-- The last rounds' planes not made (`Sponge::planes_unmade`). -/
+  planesUnmade : ℕ := 0
+  -- `Copies`
+  copyUnits : Units := default
   -- `Bools`
   bitUnits : Units := default
   -- `Packer`
@@ -469,7 +482,7 @@ def finish : BM (Circuit × View) := do
     let first := if s.producer.getD v 0 == NONE then 0 else 1
     for k in [first:ch.size] do
       idxF := idxF.set! (ch.getD k 0) k
-  let circuit : Circuit := ⟨logN, s.logWidth, s.regions, blocks, sigma, kappa, ports, s.calls⟩
+  let circuit : Circuit := ⟨logN, s.logWidth, s.regions, blocks, sigma, kappa, ports, s.calls, s.hashed, s.narrow⟩
   return (circuit, ⟨rowMap, producerF, cellF, chains, idxF⟩)
 where
   width' : BM ℕ := return 2 ^ (← get).logWidth

@@ -588,13 +588,19 @@ pub mod lean {
         out
     }
 
-    /// The vector `formal/WhirBridge`'s `Test/Check.lean` and `Test/CheckLarge.lean` read: the claim's bytes, the
-    /// root, the claim's point and value, then [`opening`].
-    pub fn bridge_vector(name: &str, claim: &PcsClaim, proof: &Proof) -> String {
+    /// The vector `formal/WhirBridge/Test/CheckPcs.lean` reads: the claim's variables, its bytes (`PCS_claim`), their
+    /// Keccak-256 (the dependency's payload), its fields, the out-of-domain point, then [`opening`].
+    pub fn pcs_vector(name: &str, claim: &PcsClaim, proof: &Proof) -> String {
+        let n = claim.n as usize;
         let mut out = format!("vector {name}\n");
-        out += &line("pcsclaim", claim.encode().iter().map(|&b| b as u64));
+        out += &line("n", [n as u64]);
+        out += &line("claimbytes", claim.encode().iter().map(|&b| b as u64));
+        out += &line("payload", claim.hash().iter().map(|&b| b as u64));
         out += &line("root", words(&claim.root));
-        out += &line("claim", claim.point.iter().chain([&claim.value]).flat_map(limbs));
+        out += &line("ood", limbs(&claim.ood));
+        out += &line("point", claim.point.iter().flat_map(limbs));
+        out += &line("value", limbs(&claim.value));
+        out += &line("oodpoint", ood_point(n, &claim.root).iter().flat_map(limbs));
         out + &opening(claim, proof) + "end\n"
     }
 }

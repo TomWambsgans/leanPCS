@@ -5,8 +5,8 @@ import RecCompose.FactsSpec
 # `SpecOf (Spec.of Data.circuit).core` of a compiled circuit whose view is `Data.circuit`
 
 **`specOf_data`**: the compiler accepted (`compile r = .ok c`), the view is `Data.circuit`, the circuit valid; then the
-verifier's constants are the compiled circuit's, its pairs `pairOfC` (the slots), `Φ`'s terms the ports after the `16`
-of value zero in order (`16 + J`), its public limbs `pubOfC`.
+verifier's constants are the compiled circuit's, its pairs `pairOfC` (the slots), `Φ`'s terms the four ports of
+nonzero value in order (`92 + J`: the three claims' Keccak-256s and the statement), its public limbs `pubOfC`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -59,21 +59,21 @@ theorem core_pairs : (Spec.of Data.circuit).core.pairs = Data.pairs.map fun p �
   simp only [Spec.core, spec_pairs, List.map_map]
   rfl
 
-theorem core_phi : (Spec.of Data.circuit).core.phi = [(15, (List.range 22).map fun J ↦
-    (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF))] := by
+theorem core_phi : (Spec.of Data.circuit).core.phi = [(15, (List.range 4).map fun J ↦
+    (Data.holes.getD (92 + J) 0 / 16, (Data.publicTerms.getD (92 + J) default).value.toF))] := by
   simp only [Spec.core, spec_phi, data_phi, List.map_cons, List.map_nil, List.map_map]
   rfl
 
-theorem core_phiTerms : phiTerms (Spec.of Data.circuit).core = (List.range 22).map fun J ↦
-    (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
+theorem core_phiTerms : phiTerms (Spec.of Data.circuit).core = (List.range 4).map fun J ↦
+    (15, Data.holes.getD (92 + J) 0 / 16, (Data.publicTerms.getD (92 + J) default).value.toF) := by
   rw [phiTerms, core_phi, List.flatMap_cons, List.flatMap_nil, List.append_nil, List.map_map]
   rfl
 
-theorem core_phiTerms_length : (phiTerms (Spec.of Data.circuit).core).length = 22 := by
+theorem core_phiTerms_length : (phiTerms (Spec.of Data.circuit).core).length = 4 := by
   rw [core_phiTerms, List.length_map, List.length_range]
 
-theorem core_phiTerms_getD {J : ℕ} (hJ : J < 22) : (phiTerms (Spec.of Data.circuit).core).getD J noPhi =
-    (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
+theorem core_phiTerms_getD {J : ℕ} (hJ : J < 4) : (phiTerms (Spec.of Data.circuit).core).getD J noPhi =
+    (15, Data.holes.getD (92 + J) 0 / 16, (Data.publicTerms.getD (92 + J) default).value.toF) := by
   rw [core_phiTerms, List.getD_eq_getElem _ _ (by rw [List.length_map, List.length_range]; exact hJ),
     List.getElem_map, List.getElem_range]
 
@@ -81,8 +81,8 @@ theorem core_phiTerms_getD {J : ℕ} (hJ : J < 22) : (phiTerms (Spec.of Data.cir
 
 /-- **The verifier's constants are the compiled circuit's.** -/
 theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : RecCircuit.compile r = .ok c)
-    (hview : viewOf c.circuit = Data.circuit) (hV : c.circuit.toPiop.Valid) :
-    SpecOf (Spec.of Data.circuit).core c.circuit.toPiop UniComplete.Domain.basisE (pairOfC c.circuit) (fun J ↦ 16 + J)
+    (hview : viewOf c.circuit = Data.circuit) (hV : c.circuit.toPiop.Valid) (hhash : c.circuit.hashed = Data.hashed) :
+    SpecOf (Spec.of Data.circuit).core c.circuit.toPiop UniComplete.Domain.basisE (pairOfC c.circuit) (fun J ↦ 92 + J)
       (pubOfC c.circuit) := by
   have hlogN := viewOf_logN hview
   have hlogW := viewOf_logW hview
@@ -95,8 +95,9 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
     rw [core_pairs, List.length_map, ← hpairs, pairsOf_length]
   have htl := core_phiTerms_length
   have hholes := viewOf_holes hview
-  have hnP : c.circuit.toPiop.nP = 38 := by
-    show (c.circuit.ports.toList.map (·.position)).length = 38
+  have hhl : c.circuit.hashed.length = 3 := by rw [hhash]; rfl
+  have hnP : c.circuit.toPiop.nP = 99 := by
+    show (c.circuit.ports.toList.map (·.position)).length = 99
     rw [List.length_map, Array.length_toList, hports]
   have hN : c.circuit.toPiop.N = 2 ^ 24 := by
     show 2 ^ c.circuit.logN = _
@@ -108,11 +109,11 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
   have hpd : ∀ i < (slots c.circuit).length, Data.pairs.getD i default = (pairsOf c.circuit).getD i default :=
     fun i _ ↦ by rw [hpairs]
   -- the source of a port, from `Data`'s public terms
-  have hsrc : ∀ j < 38, Data.publicTerms.getD j default =
-      ⟨2 ^ 24 + j, ⟨termOf 2 (c.circuit.ports.getD j default).source, none⟩⟩ := by
+  have hsrc : ∀ j < 99, Data.publicTerms.getD j default =
+      ⟨2 ^ 24 + j, ⟨termOf 3 0 (c.circuit.ports.getD j default).source, none⟩⟩ := by
     intro j hj
-    rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj), hlogN, hroots]
-  have hport : ∀ j < 38, c.circuit.toPiop.port j = Data.holes.getD j 0 := by
+    rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj), hlogN, hroots, hhl]
+  have hport : ∀ j < 99, c.circuit.toPiop.port j = Data.holes.getD j 0 := by
     intro j hj
     have hsz : j < c.circuit.ports.size := by rw [hports]; exact hj
     rw [← hholes, holesOf_getD _ hsz]
@@ -202,21 +203,22 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
       rw [htl] at hJ
       rw [core_phiTerms_getD hJ, hport _ (by omega), hW]
     zero_ports := fun j hj hnot pubs γ ↦ by
-      have hj16 : j < 16 := by
+      rw [hnP] at hj
+      have hj16 : j < 92 ∨ 96 ≤ j := by
         by_contra h
-        exact hnot (j - 16) (by rw [htl]; rw [hnP] at hj; omega) (by omega)
-      have h := hsrc j (by omega)
-      have ht := data_zero_terms j hj16
+        exact hnot (j - 92) (by rw [htl]; omega) (by omega)
+      have h := hsrc j hj
+      have ht := data_zero_terms j hj hj16
       rw [h] at ht
       unfold RecPiop.Circuit.pubFp pubOfC
-      rw [hroots]
+      rw [hroots, hhl]
       rcases termOf_eq_nil ht with hz | hz <;> rw [hz] <;> exact fpList_zero _ γ
     phi_value := fun J hJ pubs γ ↦ by
       rw [htl] at hJ
       rw [core_phiTerms_getD hJ, hsrc _ (by omega), core_maxGamma]
-      have hJ' : 16 + J < c.circuit.toPiop.nP := by rw [hnP]; omega
+      have hJ' : 92 + J < c.circuit.toPiop.nP := by rw [hnP]; omega
       unfold RecPiop.Circuit.pubFp pubOfC
-      rw [limbs_toPiop hc hJ', hroots]
-      exact term_value_source 2 _ pubs γ }
+      rw [limbs_toPiop hc hJ', hroots, hhl]
+      exact term_value_source 3 0 _ pubs γ }
 
 end RecCompose

@@ -116,11 +116,17 @@ end CloseF
 /-- A uniform Keccak state. -/
 noncomputable def uState : ProbComp KeccakState := $ᵗ KeccakState
 
-/-- **A program with tracked queries**: return; a black-box step on the state; a tracked forward query. -/
+/-- **A uniform element of `E`, drawn**, the state unchanged (a revealed scalar of the simulator). -/
+noncomputable def rDraw {A : Type} : StateT (Edges × A) ProbComp LeanVM.Parameters.E :=
+  fun s ↦ (fun e ↦ (e, s)) <$> eDist
+
+/-- **A program with tracked queries**: return; a black-box step on the state; a tracked forward query; a drawn
+uniform element of `E` (`rDraw`, kept apart from the steps so that the stream of the ideal run holds it). -/
 inductive FProg (A α : Type) : Type 1 where
   | ret (a : α)
   | step {β : Type} (m : StateT (Edges × A) ProbComp β) (k : β → FProg A α)
   | q (x : KeccakState) (k : KeccakState → FProg A α)
+  | r (k : LeanVM.Parameters.E → FProg A α)
 
 namespace FProg
 
@@ -131,12 +137,14 @@ def bind : FProg A α → (α → FProg A β) → FProg A β
   | ret a, f => f a
   | step m k, f => step m fun b ↦ bind (k b) f
   | q x k, f => q x fun y ↦ bind (k y) f
+  | r k, f => r fun e ↦ bind (k e) f
 
 /-- The program run with the tracked queries answered by `P`. -/
-def interpWith (P : KeccakState → StateT (Edges × A) ProbComp KeccakState) : FProg A α → StateT (Edges × A) ProbComp α
+noncomputable def interpWith (P : KeccakState → StateT (Edges × A) ProbComp KeccakState) : FProg A α → StateT (Edges × A) ProbComp α
   | ret a => pure a
   | step m k => m >>= fun b ↦ interpWith P (k b)
   | q x k => P x >>= fun y ↦ interpWith P (k y)
+  | r k => rDraw >>= fun e ↦ interpWith P (k e)
 
 theorem interpWith_bind (P : KeccakState → StateT (Edges × A) ProbComp KeccakState) (X : FProg A α)
     (f : α → FProg A β) : interpWith P (X.bind f) = interpWith P X >>= fun a ↦ interpWith P (f a) := by
@@ -144,6 +152,7 @@ theorem interpWith_bind (P : KeccakState → StateT (Edges × A) ProbComp Keccak
   | ret a => simp [bind, interpWith]
   | step m k ih => simp [bind, interpWith, ih]
   | q x k ih => simp [bind, interpWith, ih]
+  | r k ih => simp [bind, interpWith, ih]
 
 end FProg
 
@@ -170,6 +179,7 @@ noncomputable def badB {A α : Type} : FProg A α → (Edges × A) → ℝ≥0�
   | .ret _, _ => 0
   | .step m k, s => ∑' p, Pr{let y ← m.run s}[y = p] * badB (k p.1) p.2
   | .q x k, s => εq s x + ∑' p, Pr{let y ← (idealPerm x).run s}[y = p] * badB (k p.1) p.2
+  | .r k, s => ∑' p, Pr{let y ← (rDraw (A := A)).run s}[y = p] * badB (k p.1) p.2
 
 /-! ### One tracked query -/
 
@@ -278,5 +288,14 @@ theorem close {A α : Type} (P : FProg A α) (s : Edges × A) :
     rw [e1, e2, e3]
     exact ((close_query x s).bind_right _).trans
       (CloseF.bind_left ((idealPerm x).run s) (fun p ↦ badB (k p.1) p.2) fun p ↦ ih p.1 p.2)
+  | r k ih =>
+    have e1 : (interpR (FProg.r k)).run s = (rDraw (A := A)).run s >>= fun p ↦ (interpR (k p.1)).run p.2 :=
+      StateT.run_bind _ _ _
+    have e2 : (interpI (FProg.r k)).run s = (rDraw (A := A)).run s >>= fun p ↦ (interpI (k p.1)).run p.2 :=
+      StateT.run_bind _ _ _
+    have e3 : badB (FProg.r k) s = ∑' p, Pr{let y ← (rDraw (A := A)).run s}[y = p] * badB (k p.1) p.2 := by
+      rw [badB]
+    rw [e1, e2, e3]
+    exact CloseF.bind_left ((rDraw (A := A)).run s) (fun p ↦ badB (k p.1) p.2) fun p ↦ ih p.1 p.2
 
 end PcsQuotient.EndToEnd

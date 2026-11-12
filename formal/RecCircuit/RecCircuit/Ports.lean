@@ -32,9 +32,13 @@ def portMeaning (c : Compiled) (r : Recorded) (w : ℕ → K) (J : ℕ) : List K
   match (c.circuit.ports.getD J default).source with
   | .statement => (List.range 4).map fun k => F64.ofNat (beNat (slice (c.pubW w) (8 * k) 8))
   | .root i => (List.range 4).map fun l =>
-      F64.ofNat (beNat (slice (c.streamW r w) (r.rootsAt.getD i 0 + [24, 16, 8, 0].getD l 0) 8))
+      F64.ofNat (beNat (slice (c.streamW r w) (c.rootsAt.getD i 0 + [24, 16, 8, 0].getD l 0) 8))
   | .element e => limbsL ((c.valsW r w).getD (c.elementNodes.getD e 0) default).toE
-  | .zero => limbsL ((c.valsW r w).getD (c.zeroNodes.getD (c.zeroIndex J) 0) default).toE
+  | .claimHash j => (List.range 4).map fun l => c.ctx.val w ((c.claims.getD j default).limbs4.getD l NONE)
+  | .zero =>
+    if c.zeroIndex J < c.claimZeros then
+      (List.range 3).map fun l => c.ctx.val w ((c.claimSums.getD (c.zeroIndex J) #[]).getD l NONE)
+    else limbsL ((c.valsW r w).getD (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0) default).toE
   | .pad => [0, 0, 0]
 
 theorem portsOk_parts (h : c.portsOk c.ctx = true) :
@@ -120,18 +124,19 @@ theorem ports_carry (hc : c.Checked r) (hw : c.circuit.Satisfied w) :
     have hro := hc.roots
     unfold rootsOk at hro
     simp only [Bool.and_eq_true, beq_iff_eq] at hro
-    have hi : i < r.rootsAt.length := by
+    obtain ⟨_, hrsz, hro2⟩ := hro
+    have hi : i < c.rootsAt.length := by
       by_contra hcon
       have : c.rootLimbs.getD i #[] = #[] := by
         simp [Array.getD_eq_getD_getElem?, show c.rootLimbs.size ≤ i by omega]
       rw [hpv, this] at hsize; simp at hsize
-    have hr := allBelow_spec hro.2 i hi
+    have hr := allBelow_spec hro2 i hi
     simp only [Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.mem_range] at hr
     obtain ⟨⟨_, hall⟩, hpk⟩ := hr
     apply List.map_congr_left
     intro l hlm
     rw [List.mem_range] at hlm
-    set at_ := r.rootsAt.getD i 0
+    set at_ := c.rootsAt.getD i 0
     have hfirst : [24, 16, 8, 0].getD l 0 + 8 ≤ 32 := by interval_cases l <;> decide
     have hall' : ∀ k < 8 * 32, (c.bitSelf.getD (8 * at_ + k) none).isSome := fun k hk => hall k hk
     obtain ⟨hb, hbits⟩ := read_bits hc hw (by norm_num) hall'
@@ -151,17 +156,28 @@ theorem ports_carry (hc : c.Checked r) (hw : c.circuit.Satisfied w) :
       apply List.mem_append_right
       simpa [Array.getD_eq_getD_getElem?, hso] using Array.getElem_mem_toList hso)
     exact elem_port hc hw hmem.1 hmem.2 hsize
+  | claimHash j =>
+    rw [hsrc] at hsize hl
+    simp only [Source.limbs] at hsize hl ⊢
+    have hpv : c.portValues c.ctx J = (c.claims.getD j default).limbs4 := by simp only [portValues, hsrc]
+    rw [hpv]
   | zero =>
     rw [hsrc] at hsize hl
     simp only [Source.limbs] at hsize hl ⊢
-    have hpv : c.portValues c.ctx J = c.limbsOf (c.zeroNodes.getD (c.zeroIndex J) 0) := by simp only [portValues, hsrc]
-    rw [hpv] at hsize ⊢
-    have hso := allBelow_spec hc.sources J hJ
-    simp only [hsrc, decide_eq_true_eq] at hso
-    have hmem := (graphOk_parts hc.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J) 0) (by
-      apply List.mem_append_left
-      simp [List.getD_eq_getElem?_getD, hso])
-    exact elem_port hc hw hmem.1 hmem.2 hsize
+    by_cases hcz : c.zeroIndex J < c.claimZeros
+    · have hpv : c.portValues c.ctx J = c.claimSums.getD (c.zeroIndex J) #[] := by
+        simp only [portValues, hsrc, hcz, ite_true]
+      rw [hpv, if_pos hcz]
+    · have hpv : c.portValues c.ctx J = c.limbsOf (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0) := by
+        simp only [portValues, hsrc, hcz, ite_false]
+      rw [hpv] at hsize ⊢
+      rw [if_neg hcz]
+      have hso := allBelow_spec hc.sources J hJ
+      simp only [hsrc, decide_eq_true_eq] at hso
+      have hmem := (graphOk_parts hc.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0) (by
+        apply List.mem_append_left
+        simp [List.getD_eq_getElem?_getD, show c.zeroIndex J - c.claimZeros < c.zeroNodes.length by omega])
+      exact elem_port hc hw hmem.1 hmem.2 hsize
   | pad =>
     rw [hsrc] at hsize hl
     simp only [Source.limbs] at hsize hl ⊢

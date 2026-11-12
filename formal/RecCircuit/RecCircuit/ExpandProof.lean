@@ -79,6 +79,13 @@ theorem valE_of {P Q : Array RecGraph.Value} {i j : ℕ} (h : P[i]? = Q[j]?) : v
 theorem valState_of {P Q : Array RecGraph.Value} {i j : ℕ} (h : P[i]? = Q[j]?) : valState P i = valState Q j := by
   simp only [RecGraph.valState, h]
 
+theorem valRate_of {P Q : Array RecGraph.Value} {i j : ℕ} (h : P[i]? = Q[j]?) :
+    RecGraph.valRate P i = RecGraph.valRate Q j := by
+  simp only [RecGraph.valRate, h]
+
+theorem Node.isState_of_isHash (n : Node) (h : n.isHash = true) : n.isState = true := by
+  cases n <;> simp_all [Node.isHash, Node.isState]
+
 /-! ## The replay, one node -/
 
 /-- `expandList`'s step. -/
@@ -309,6 +316,21 @@ theorem node_out {g : RecGraph.Graph} {G : Graph} (hG : G.nodes = g.nodes.map of
       simp only [RecGraph.stepP, RecGraph.stepNode, valState_of hss]
     exact ⟨RecGraph.new_inv st hI.inv _ hr (fun _ ⟨_, e⟩ => by cases e), RecGraph.new_grows st _,
       new_kernels st _, RecGraph.new_lt st hI.inv _, valE_of hopt, fun _ => hopt⟩
+  | wide h k =>
+    simp only [ofRGNode, Graph.typedAt, Bool.and_eq_true, decide_eq_true_eq] at htj
+    have hs : h < j := htj.1.1.1
+    have hss := hst hs (Node.isState_of_isHash _ htj.1.1.2)
+    simp only [ofRGNode, expandNode, pure, Except.pure, Except.ok.injEq] at he
+    obtain ⟨rfl, rfl⟩ : i = _ ∧ st' = _ := ⟨(congrArg Prod.fst he).symm, (congrArg Prod.snd he).symm⟩
+    have rs := hI.rel h hs
+    have hr : ∀ a ∈ RecGraph.reads st.kernels (.wide (map.getD h 0) k), a < st.nodes.size := by
+      simp only [RecGraph.reads, RecGraph.Node.operands, List.mem_singleton]; rintro a rfl; exact rs.1
+    have hopt : (evalAll π iv pub stream (st.new (.wide (map.getD h 0) k)).2)[(st.new
+        (.wide (map.getD h 0) k)).1]? = (origVals π iv pub stream g)[j]? := by
+      rw [RecGraph.new_val π iv pub stream st hI.inv _ hr, hV]
+      simp only [RecGraph.stepP, RecGraph.stepNode, valRate_of hss]
+    exact ⟨RecGraph.new_inv st hI.inv _ hr (fun _ ⟨_, e⟩ => by cases e), RecGraph.new_grows st _,
+      new_kernels st _, RecGraph.new_lt st hI.inv _, valE_of hopt, fun _ => hopt⟩
   | bits v s w =>
     simp only [ofRGNode, Graph.typedAt, Bool.and_eq_true, decide_eq_true_eq] at htj
     have hv : v < j := htj.1
@@ -427,6 +449,10 @@ theorem typed_before {g : RecGraph.Graph} {G : Graph} (hK : G.kernels = g.kernel
     simp only [ofRGNode, Graph.typedAt, Bool.and_eq_true, decide_eq_true_eq] at h
     simp only [RecGraph.reads, RecGraph.Node.operands, List.mem_singleton] at ha
     rw [ha]; exact h.1
+  | wide x k =>
+    simp only [ofRGNode, Graph.typedAt, Bool.and_eq_true, decide_eq_true_eq] at h
+    simp only [RecGraph.reads, RecGraph.Node.operands, List.mem_singleton] at ha
+    rw [ha]; exact h.1.1.1
   | bits v s w =>
     simp only [ofRGNode, Graph.typedAt, Bool.and_eq_true, decide_eq_true_eq] at h
     simp only [RecGraph.reads, RecGraph.Node.operands, List.mem_singleton] at ha
@@ -553,12 +579,12 @@ theorem compileRaw_ok {r : Recorded} {c : Compiled} (h : compileRaw r = .ok c) :
     cases h
 
 /-- **The expansion keeps `RecGraph`'s meaning**, on every graph the compiler accepts: `ExpandSound`, proved. -/
-theorem expandSound {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {c : Compiled}
-    (hc : compile (ofRG g rootsAt iv) = .ok c) : ExpandSound g c := by
+theorem expandSound {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ} {c : Compiled}
+    (hc : compile (ofRG g rootsAt iv hashed) = .ok c) : ExpandSound g c := by
   intro iv' pub stream k hk
   obtain ⟨ht, he⟩ := compileRaw_ok (compileRaw_of_compile hc)
   obtain ⟨st, hn, hI⟩ := expand_einv (π := keccakF1600) (iv := iv') (pub := pub) (stream := stream.toArray)
-    (g := g) (G := (ofRG g rootsAt iv).graph) rfl rfl ht he
+    (g := g) (G := (ofRG g rootsAt iv hashed).graph) rfl rfl ht he
   have hX : c.rgX iv' pub stream = evalAll keccakF1600 iv' pub stream.toArray st := by
     unfold Compiled.rgX RecGraph.evalAll
     have hid : (toRGNode ∘ ofRGNode) = id := funext toRG_ofRG

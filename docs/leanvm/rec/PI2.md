@@ -6,8 +6,8 @@
 Its circuit is `SPEC-REC.md` §10's; this file is its PIOP, **π2v4** (transcript `leanvm-rec-pi2v4`,
 `pi2::verifier::NAME`): the ports out of the copy argument, `P` committed in `Q`, `q` below `2N` (§1, §7), on the EIP
 draft's PCS claims (§2, §8), the copy argument's sum forced by `Q`'s layout rather than claimed (§2, §7: two claims on
-`Q`; π2v3 had a third). Code in `crates/leanvm/rec/src/pi2/`. The Lean (`formal/RecCompose`) states π2v3 as of
-commit `f96a7938`, over π1-rec3 with π1's claims encoded by the contract (§10). Numbers are **measured** unless marked
+`Q`; π2v3 had a third). Code in `crates/leanvm/rec/src/pi2/`. The Lean (`formal/RecPiop`, `RecStatement`, `RecCompose`) states π2v4 over
+π1-rec4 (§10). Numbers are **measured** unless marked
 modelled; superseded versions (π2v1, π2v2 before the PCS claims) are in `docs/HISTORY.md`, "leanVM".
 
 ```sh
@@ -345,10 +345,13 @@ then after the union):
 | `ρ`: `Q`'s pushes' claim (degree 2) | `2/2^192` over `L_W L_Q` | 191.0 | 165.9 |
 
 (π2v3: `t` at `4N`, 140.9 bits, its third claim on `Q` at `ρ` of degree 3.) The Lean (`formal/RecPiop`'s `err`)
-states π2v3's rounds, coarser: `(4N − 1 + Σ_j d_j)/|E|` for the copy argument and
-the ports, `(4N − 1)/|E|` at `t`, `2^r/|E|` at `ρ`. These depend only on `N` and the stacks. With the openings charged
-once (`269 · 2^-137` a query; seven openings), π2 keeps 128.93 bits as `Q/ε` at `Q = 2^64` (`RecCompose.pi2Bound`,
-`pi2Bound_le_bits`), the recursion 127.86.
+states π2v4's rounds: `(4N − 1 + Σ_j d_j)/|E|` for the copy argument, the ports and the vanishing denominators
+(`card_copyOK4_le`; `Σ_j d_j = 4`: the statement and π1's three claim hashes), `(5N − 1)/|E|` at `t` (`I` and `P`'s
+definition, `card_iPoly_eval_eq_zero_le`), `(2^r + 1)/|E|` at `ρ` (`W`'s fold and `Q`'s pushes' claim of degree 2,
+`card_qClaim_le`); the layout lemma `copyOK4_of_iPoly` is step 5–6 above, with `Σ_V h = 0` from `h`'s degree
+(`RecPiop.sum_eval_eq_zero_of_natDegree_lt`, by Lagrange's interpolation on `V_m`). These depend only on `N` and the
+stacks. With the openings charged once (`269 · 2^-137` a query; seven openings), π2 keeps 128.93 bits as `Q/ε` at
+`Q = 2^64` (`RecCompose.pi2Bound`, `pi2Bound_le_bits`), the recursion 127.86.
 
 ## 8. The claims' encoding, the IVs, the setup path
 
@@ -440,14 +443,9 @@ parent's difference `p_j + p_{j+half}`: `r 2^(r-1)` products instead of `r 2^r` 
 
 ## 10. The Lean side
 
-`formal/RecPiop`, `RecStatement` and `RecCompose` state and prove π2v3 on the EIP draft's PCS claims as of commit
-`f96a7938`: over π1-rec3, π1's three claims encoded by the contract (from the stream and constants), 24-byte narrow
-challenges, a selector. The contract model checks the eight declared claims (π1's three, π2's five), each a root, its
-out-of-domain answer, a point and a value, opened by one PCS opening (`WhirBridge.Pcs`), the eight charged once
-(`pcs_union_sound_oracle`); `Q`'s three claims are bound to one table by its answer (`qOodBinding`); `Q`'s empty slots
-are the prover's, handled as §2 says ("The empty slots"), at round 1's error `(4N − 1)/|E|`. The end theorems
-(`RecCompose.recKnowledgeSoundness_reduction_real`, `Pi1K.recCompleteness_real_K_fs_bits`) give `pi2Bound Q ≤ 2^-64` at
-`Q ≤ 2^64` (128.93 bits as `Q/ε`) and completeness `δ1 + δh + 2^-164`. π2's Lean prover agrees with the Rust on the
-`lean_pi2_prover` vectors; `rec-circuit-keccak`, `rec-view-check` and `rec-real-check` hold
-(`formal/RecCompose/README.md`). What the Lean needs for the deployed π2 (π1-rec4, the hashed claims, the frame reads,
-no selector, π2v4's layout and two claims on `Q`): `docs/LEAN_PORT.md`, "leanVM".
+The Lean states π2v4 over π1-rec4 (`docs/LEAN_PORT.md` for what is left): `formal/RecPiop` (§7's rounds and layout
+lemma), `formal/RecStatement` (the verifier, `Data.lean` generated from this circuit, the contract with π1's three
+claims declared in the frame and hashed in the circuit, seven claims), `formal/RecCircuit` (the compiler, its
+`ClaimHash` ports), `formal/RecCompose` (the composition: the end-to-end reduction adds a Keccak-256 collision term,
+since the circuit binds π1's claims to the declared ones by their Keccak-256s). π2's Lean prover agrees with the Rust on
+the `lean_pi2_prover` vectors (`formal/RecCompose/README.md`).

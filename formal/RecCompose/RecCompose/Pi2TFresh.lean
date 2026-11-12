@@ -6,30 +6,25 @@
 import RecCompose.Pi2Chain
 
 /-!
-# `t`'s query is fresh for π2 (`Pi2TFresh`), given `α`'s
+# `t`'s query is fresh for π2, given `α`'s
 
-π2's `t` is drawn right after `Q`'s root: its input is `s₃`'s `32` bytes (the state after `γ`) and `Q`'s root word,
-`64` bytes, a Merkle node's length. π1's argument (`ProbTFresh`: `C2`'s tree does not depend on the last answer, so
-the uniform answer and the tree's run swap) does not apply: **`Q`'s leaves depend on `s₃`** (`qEntry` of
-`hNovel G w α β γ`). The argument here:
+π2's `t` is drawn right after `Q`'s root and out-of-domain answer: its input is `s₃`'s `32` bytes (the state after
+`γ`), `Q`'s root word and its answer, `88` bytes (`tLen`). π1's argument (`ProbTFresh`: `C2`'s tree does not depend on
+the last answer, so the uniform answer and the tree's run swap) does not apply: **`Q`'s leaves depend on `s₃`**
+(`qEntry` of the copy argument's terms at `α, β, γ`). The argument here:
 
-* `s₁` is fresh but with probability `εα` (`α`'s input, **`Pi2AlphaFresh`**, named; `Pi2Chain`); `s₂`'s and `s₃`'s
-  inputs (`32` bytes) are fresh unless an earlier answer repeats or a cached input is the answer's bytes;
+* `s₁` is fresh but with probability `εα` (`α`'s input; `Pi2Chain`); `s₂`'s and `s₃`'s inputs (`32` bytes) are fresh
+  unless an earlier answer repeats or a cached input is the answer's bytes;
 * `Q`'s tree hashes `512`-byte leaves (whatever they hold) and `64`-byte nodes, **each node beginning with a digest
   the tree received** (an answer to one of its own queries, or `default` for a missing child; **`APq`**,
-  `apq_commitWithH`); it never asks a `32`-byte input, so its run from the cache with `s₃` answered is its run without
-  it, the answer added (`run_frame`);
-* so with `u = s₃` uniform: a cached `64`-byte input beginning with `u` is one cached before `s₃` (at most `K + 2`
-  of the `2^256` answers), or a node whose first digest is `u`: `default` (one answer), an answer cached before
-  (`K + 2`), or a fresh answer of the tree equal to `u` (`1 / 2^256` each, **`prHit64_le`**).
+  `apq_commitWithH`), and its out-of-domain point `46`-byte inputs; it never asks a `32`-byte input, so its run from
+  the cache with `s₃` answered is its run without it, the answer added (`run_frame`);
+* so with `u = s₃` uniform: a cached `88`-byte input beginning with `u` is one cached before `s₃` (at most `K + 2`
+  of the `2^256` answers), or a query of the tree beginning with `u` (`prHit64_le`).
 
 **`tFresh_of`** (any `Pi2Staged` whose `B` is such a tree then a writer whose `t` input begins with `s₃`): `t`'s input is
-cached with probability at most `εα + (4 K + 6 + NT) / 2^256` (`K` stage A's hashed inputs, `NT` the tree's).
-**`pi2TFresh_of`**: `Pi2TFresh D C Fa P1k (εα + (4 N + 6 + treeCost μQ) / 2^256)` from `Pi2RunCost D C Fa P1k N` and
-`Pi2AlphaFresh D C Fa P1k εα`, for every `P1k`; **`tFreshBound2_le`**: below `2^-200` at `N ≤ 2^50`, `εα ≤ 2^-201`.
-
-**`recCompleteness2_pi2_staged2`**: `recCompleteness2_pi2_staged` with `Pi2HashBeforeAlpha` (false at a π1 prover hashing `32`-byte inputs) replaced
-by `Pi2AlphaFresh εα` and `Pi2TFresh` proved, error `delta2' N εα εt' εpow`.
+cached with probability at most `εα + (4 K + 6 + NT) / 2^256` (`K` stage A's hashed inputs, `NT` the tree's);
+conditioned on the graph's acceptance in `Pi2AlphaG` (`TF.tFresh_ofG`, `Pi2G.pi2TFresh_ofG`).
 -/
 
 open OracleComp OracleSpec

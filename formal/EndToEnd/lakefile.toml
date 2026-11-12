@@ -30,6 +30,25 @@ path = "../leanervm/lean_vm"
 name = "QuotientSecurity"
 srcDir = ".."
 
+# The deployed membership reduction (`pcs-quotient-kc3`, `docs/membership/PROTOCOL.md`) as polynomials (F1), its
+# rounds' soundness and the circuit's conditions, `formal/Kc3`.
+[[lean_lib]]
+name = "Kc3"
+srcDir = ".."
+
+# The deployed membership circuit (F0, `formal/Kc3Circuit`): its builder's rows compute the statement, its wiring's
+# cycles, the pole condition, and the relation from the reduction's (`Kc3.Params.Sat`) and back.
+[[lean_lib]]
+name = "Kc3Circuit"
+srcDir = "../Kc3Circuit"
+globs = ["Kc3Circuit", "Kc3Circuit.+"]
+
+# The differential test of the deployed circuit against `crates/membership/quotient/examples/dump_circuit.rs`.
+[[lean_exe]]
+name = "kc3-dump-circuit"
+srcDir = "../Kc3Circuit"
+root = "Kc3CircuitTest.Dump"
+
 # The reduction's Keccak-256 chain (F4a), `formal/QuotientRpm`.
 [[lean_lib]]
 name = "QuotientRpm"
@@ -129,6 +148,20 @@ srcDir = "../Heap"
 globs = ["Heap", "Heap.+"]
 leanOptions = { warningAsError = true }
 
+# The Statement's differential test against the Rust (`formal/Statement/PcsQuotientTest/Differential.lean`), on the
+# vectors `crates/membership/quotient/examples/statement_vectors.rs` writes.
+[[lean_exe]]
+name = "membership-differential"
+srcDir = "../Statement"
+root = "PcsQuotientTest.Differential"
+
+# The runner of the completeness proof's evaluated check on the deployed wiring table
+# (`E2ECompleteness.Pcs.H.WiringCheck`).
+[[lean_exe]]
+name = "membership-wiring-check"
+srcDir = "../Statement"
+root = "PcsQuotientTest.WiringCheck"
+
 # ---- The end-to-end libraries ----
 
 # `PcsQuotient.KnowledgeSoundness` from the random-permutation transfer and `SoundPcs`'s composition of the EIP's
@@ -161,7 +194,7 @@ srcDir = "Completeness"
 globs = ["E2ECompleteness"]
 
 # The deployed EVM contract is the statement's verifier (`Evm.lean`, `Evm/*.lean`): F5's recorded
-# graph, run on the calldata of a statement's proof, checks declared exactly the EIP encodings of the six PCS
+# graph, run on the calldata of a statement's proof, checks declared exactly the EIP encodings of the three PCS
 # claims `PcsQuotient.verifyWith` opens.
 [[lean_lib]]
 name = "Evm"
@@ -269,7 +302,7 @@ leanOptions = { warningAsError = true }
 # The recursive verifier's end theorems (`formal/RecCompose`): π2's part `RecStatement.RecKnowledgeSoundness2` from
 # π2's layers (the Fiat–Shamir layer, the openings, `RecPiop`'s rounds, `RecCircuit`'s corollary), its bound in bits,
 # and Part 1 ⇒ Part 2 (`RecKnowledgeSoundness`, `RecCompleteness` against the Keccak VM's `KvHolds`, under the named
-# hypotheses about π1-rec3 at Keccak-f[1600]).
+# hypotheses about π1-rec4 at Keccak-f[1600]); π2's completeness error and the completeness at the real deployment.
 [[lean_lib]]
 name = "RecCompose"
 srcDir = "../RecCompose"

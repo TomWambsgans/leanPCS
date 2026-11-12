@@ -176,6 +176,18 @@ theorem reads_nextRoot : Reads (nextRoot (m := m)) 32 fun d cur x ↦ x = (halfA
   subst hlo hhi hx
   rfl
 
+/-- The narrow element `next_narrow` reads at `cur` (its 20 bytes). -/
+def narrowAt (d : Array UInt8) (cur : ℕ) : E :=
+  let b := d.extract cur (cur + 20)
+  eNew (beWordAt b 12) (beWordAt b 4) ((List.range 4).foldl (fun acc k ↦ (acc <<< 8) ||| (b.getD k 0).toUInt64) 0)
+
+theorem reads_nextNarrow : Reads (RecStatement.nextNarrow (m := m)) 20 fun d cur x ↦ x = narrowAt d cur := by
+  unfold RecStatement.nextNarrow
+  refine reads_mono (reads_bind (reads_takeBytes 20) fun b _ ↦ reads_pure _) rfl ?_
+  rintro d cur x ⟨b, hb, hx⟩
+  subst hb hx
+  rfl
+
 /-! ## `for` loops -/
 
 /-- The value of a `for` loop over a list whose body reads `k x` bytes and yields `g d cur x b`. -/

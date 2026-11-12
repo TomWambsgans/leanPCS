@@ -1,30 +1,23 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
-import RecCompose.Bridge
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecCompose.Tables
 import RecCompose.Real
+import RecCompose.FsClosed
+import RecCompose.End
 
 /-!
 # The end theorems, from the named inputs left
 
-The end statements at the real deployment (the Keccak VM's π1-rec3 at the 128-signature reference shape) with every
-proved layer in place, their hypotheses the inputs left:
+The end statements at a deployment `D` with `D.Real` (π2v4 over the Keccak VM's π1-rec4 at the 128-signature reference
+shape), every proved layer in place, their hypotheses the inputs left:
 
-* π2's Fiat–Shamir layer `Pi2FsLayer D` (proved at the real deployment, `pi2FsLayer_real`: `FsClosed.lean` restates
-  these theorems without it);
-* the setup's columns are proved: `RecDeployment.Real` says how the deployment builds them (`SetupFromCompiler`: σ, κ
-  the compiled circuit's at every 32-byte π1 IV), so `Pi2SetupColumns D C` is `pi2SetupColumns_of_real` and the tables' layer is
-  `pi2Tables`;
-* the compiled circuit `C : Pi2Circuits D` (the Lean compiler accepts the Keccak π1-rec3's graph at every 32-byte π1
-  IV, **checked by evaluation at three IVs** and assumed at the others: `rec-real-check`, `RecCompose.IvChecked`), at
-  the emitted graph's roots (`hroots`), the Lean recording being the emitted graph (`GraphsAgree`, **checked by
-  evaluation**: `RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean`);
-* the circuit's facts `Fa : Pi2Facts D C` and the ports' and calls' meaning in the contract's terms
-  (`StatementPortMeaning`, `ZeroPortsMeaning`, `CallWordsAgree`), kept here as hypotheses; proved for
-  `pi2Facts` from the evaluated view check `Pi2ViewChecked C` (`Facts.lean`, `Meanings.lean`), so
-  `FsClosed.lean` restates these theorems without them;
-* for part 2, nothing in the reduction form (`recKnowledgeSoundnessReduction_final`); the Prop-premise forms take
-  `Pi1FsKeccak`, `Pi1HazardKeccak` (false as stated for unbounded adversaries: the Fiat–Shamir heuristic for bounded
-  ones), `Pi1GraphIsVerifierK` being proved (`RecGraphKeccak.Sim.pi1GraphIsVerifierK`).
+* π2's Fiat–Shamir layer `Pi2FsLayer D` (proved at every real deployment: `pi2FsLayer_real`, `FsClosed.lean`);
+* the setup's columns, proved from `RecDeployment.Real` (`SetupFromCompiler`: σ, κ the compiled circuit's at every π1
+  setup commitment), so `Pi2SetupColumns D C` is `pi2SetupColumns_of_real` and the tables' layer is `pi2Tables`;
+* the compiled circuit `C : Pi2Circuits D` (the Lean compiler on π1-rec4's graph at every π1 setup commitment) at the
+  emitted graph's roots (`hroots`), its facts `Fa : Pi2Facts D C` and the circuit's corollary
+  `Pi2CircuitAccepts C Fa` (a satisfied circuit carries a π1 stream π1-rec4's graph accepts, its claims hashing to the
+  declared ones); at the real deployment all three are built from the evaluated checks (`RealEnd.lean`);
+* the Lean recording of π1-rec4's verifier is the emitted graph (`RecGraphKeccak.GraphsAgreeK4`, **evaluated**).
 -/
 
 namespace RecCompose
@@ -32,43 +25,31 @@ namespace RecCompose
 open RecStatement LeanVM.Parameters LeanVM.Protocol
 open scoped ENNReal
 
-/-- **π2's part, at the real deployment**: `RecKnowledgeSoundness2 D pi2Bound`, `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`. -/
-theorem recKnowledgeSoundness2_final (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
-    (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa) :
-    RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
-  recKnowledgeSoundness2_real_bridge D hD C Fa (pi2Tables D C Fa (pi2SetupColumns_of_real hD C hroots)) hfs hroots hg
-    hstmt hzero hcalls
-
 /-- π2's layers from the named inputs. -/
 noncomputable def pi2LayersFinal (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
-    (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa) : Pi2Layers D pi2Bound :=
-  pi2Layers_of C Fa (pi2Tables D C Fa (pi2SetupColumns_of_real hD C hroots)) hfs
-    (pi2CircuitAccepts_of_bridge C Fa hroots hg (circuitBridge D hD C Fa hroots hg hstmt hzero hcalls))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hcirc : Pi2CircuitAccepts C Fa) :
+    Pi2Layers D pi2Bound :=
+  pi2Layers_of_fs C Fa (pi2SetupColumns_of_real hD C hroots) (pi2FsLayer_real D hD) hcirc
 
-/-- **End to end, against the Keccak VM's `KvHolds`, as an explicit reduction**: `RecKnowledgeSoundnessReduction D pi2Bound`. -/
-theorem recKnowledgeSoundnessReduction_final (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
-    (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa) : RecKnowledgeSoundnessReduction D pi2Bound :=
-  recKnowledgeSoundnessReduction_end D hD (pi2LayersFinal D hD C Fa hfs hroots hg hstmt hzero hcalls)
+/-- **π2's part**: `RecKnowledgeSoundness2 D pi2Bound`, and `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`. -/
+theorem recKnowledgeSoundness2_final (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hcirc : Pi2CircuitAccepts C Fa) :
+    RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
+  ⟨recKnowledgeSoundness2_of_real D (pi2LayersFinal D hD C Fa hroots hcirc), pi2Bound_le_bits⟩
 
-/-- **End to end, against the Keccak VM's `KvHolds`**: `RecKnowledgeSoundness D pi2Bound ε1 εh` for every `ε1`, `εh`. -/
+/-- **End to end, against the Keccak VM's `KvHolds`, as an explicit reduction**:
+`RecKnowledgeSoundnessReduction D pi2Bound` (π2's bound plus π1-rec4's, the merge hazard's and a Keccak-256
+collision's experiments for the explicit derived adversaries). -/
+theorem recKnowledgeSoundnessReduction_final (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D)
+    (Fa : Pi2Facts D C) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hcirc : Pi2CircuitAccepts C Fa)
+    (hg : RecGraphKeccak.GraphsAgreeK4) : RecKnowledgeSoundnessReduction D pi2Bound :=
+  recKnowledgeSoundnessReduction_end D hD.2.2.1 hg (pi2LayersFinal D hD C Fa hroots hcirc)
+
+/-- **End to end, the Prop-premise form**: `RecKnowledgeSoundness D pi2Bound ε1 εh εc` for every `ε1`, `εh`, `εc`. -/
 theorem recKnowledgeSoundness_final (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
-    (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa)
-    (ε1 εh : ℕ → ℝ≥0∞) : RecKnowledgeSoundness D pi2Bound ε1 εh :=
-  recKnowledgeSoundness_end D hD (pi2LayersFinal D hD C Fa hfs hroots hg hstmt hzero hcalls) ε1 εh
-
-/-- **End to end, under `Pi1FsKeccak` and `Pi1HazardKeccak` alone** (false as stated for unbounded adversaries: the
-Fiat–Shamir heuristic for bounded ones): the explicit extractor `recExtractor` fails while the contract accepts with
-probability at most `pi2Bound Q + ε1 Q + εh Q`. -/
-theorem recKnowledgeSoundness_final_fs (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
-    (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa)
-    (ε1 εh : ℕ → ℝ≥0∞) (h1 : Pi1FsKeccak D ε1) (hh : Pi1HazardKeccak D εh) :
-    RecKnowledgeSoundnessWith D (recExtractor D) fun Q ↦ pi2Bound Q + ε1 Q + εh Q :=
-  recKnowledgeSoundness_end_fs D hD (pi2LayersFinal D hD C Fa hfs hroots hg hstmt hzero hcalls) ε1 εh h1 hh
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hcirc : Pi2CircuitAccepts C Fa)
+    (hg : RecGraphKeccak.GraphsAgreeK4) (ε1 εh εc : ℕ → ℝ≥0∞) : RecKnowledgeSoundness D pi2Bound ε1 εh εc :=
+  recKnowledgeSoundness_end D hD.2.2.1 hg (pi2LayersFinal D hD C Fa hroots hcirc) ε1 εh εc
 
 end RecCompose
 
@@ -83,7 +64,3 @@ end RecCompose
 /-- info: 'RecCompose.recKnowledgeSoundness_final' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.recKnowledgeSoundness_final
-
-/-- info: 'RecCompose.recKnowledgeSoundness_final_fs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.recKnowledgeSoundness_final_fs

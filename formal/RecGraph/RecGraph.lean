@@ -9,6 +9,7 @@ import RecGraph.Sim.Compose
 import RecGraph.Sim.Calls
 import RecGraph.Sim.Flock
 import RecGraph.Sim.Shape
+import RecGraph.Sim.Wide
 
 /-!
 # RecGraph: recorded verifier graphs, their meaning, and the recorder

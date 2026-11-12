@@ -4,49 +4,36 @@
 -- the Statement's contract (`formal/RecStatement`, written with Keccak-256 explicit in `Pi2CompleteH`). Uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls, the
 -- logged random oracle and its potential engine, `powPot`, `missProb`, the run at a log's answers.
-import RecCompose.Pi2CompleteEnd
-import RecCompose.Facts
+import RecCompose.Pi2Accepts
+import RecCompose.Holds
+import RecCompose.Pi2Chain
 import UniKeccakComplete.K.ProbGrind
 
 /-!
-# π2's completeness experiment, staged
+# π2's completeness experiment, staged (π2v4)
 
-**The P1 class**: π1-rec3's prover is a two-call program `P1k` (Keccak-256 and Keccak-f[1600] its calls) whose run over
-the random permutation is `P1` (part of `Pi2ExperimentLe`).
+**The P1 class**: π1-rec4's prover is a two-call program `P1k` (Keccak-256 and Keccak-f[1600] its calls) whose run over
+the random permutation is `P1` (`Pi2ExperimentLe`).
 
-**`pi2Staged D C Fa P1k input rows q : Pi2Staged`**, π2's experiment's stages over the two calls:
+**`pi2Staged D C Fa P1k input : Pi2Staged`**, π2's experiment's stages over the two calls:
 
-* `A` (`stageA`): the setup, `P1k`, π1-rec3's graph on its proof (`a1`), then π2's prover up to `α`: its setup, IV, the
-  witness it takes, the seed, the public values, `W`'s commitment, out-of-domain point (`oodPointM`) and root
-  (`pre2`); `inp` `α`'s input, `608` bytes
-  (`fixLen`: `tInput` of the writer, `608` bytes when the values match the reads);
-* the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment, out-of-domain point and root (`mid2`); `t`'s query on the
-  writer's input; `C` (`stageC`) the values at `t`, `ρ` (`post2`), the three openings and the contract
-  (`Pi2H.verifierWithH`); a proof of `P1k`'s none is the pair `(false, false)`;
-* the priors: `(roots, w, pub)` for the triple (`Bad`: the copy argument's `BadCopy`), with the triple for `t`
-  (`badT`: `¬ BadCopy ∧ BadT`).
+* `A` (`stageA`): the setup, `P1k`, π1-rec4's graph on its proof (`a1`), then π2's prover up to `α`: its setup, IV, π1's
+  claims, the witness it takes, the seed (the frame words last), the public values, `W`'s commitment, out-of-domain
+  point (`oodPointM`), root and answer (`pre2`); `inp` `α`'s input (`fixLen 88` of the writer's: `88` bytes when the
+  values match the real circuit's reads);
+* the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment, out-of-domain point, root and answer
+  (`mid2`); `t`'s query on the writer's input; `C` (`stageC`) the values at `t` and `ρ` (`post2`), then `restC`: the
+  four openings and the contract (`Pi2H.verifierWithH`); a proof of `P1k`'s none is the pair `(false, false)`;
+* the priors: `(roots, w, pub)` for the triple (`badSet2`: the copy argument's `BadCopy`), with the triple for `t`
+  (`badT2`: `¬ BadCopy ∧ BadT`), `(roots, t)` for `ρ` (`badR2`: `BadRho`).
 
-**Proved**: `Holds.L_ne`, `inp_length`, `badCard` (`card_badCopy_pi2`), `badTCard` (`card_badT_pi2`, a non-hole position
-from the view check, `nonHole_pi2`), and `rejectGood` with `εpow = N · (1 − 2^-17)^nonceFuel`
-(**`rejectGood_pi2`**: mumbai's potential, as `ProbGrind`, from the core at any pure `(H, F)`, **`rejects_at`**: on a
-run the graph accepts at good challenges, the witness complete (`Pi2WitnessComplete`), π2's honest prover either fails
-one opening's proof of work or its proof is accepted, `pi2_accepts`, π1's openings by `Pi2Pi1Openings`).
+**The named inputs** (statements about the explicit `pi2Staged`): `Pi2ExperimentLe`, `Pi2RunDuplex`, `Pi2RunCost N`;
+the other helpers' `Pi2Pi1Openings` (π1's three claims in the contract open) and `Pi2WitnessExists` (the circuit
+compiler's completeness).
 
-**Named** (each about the explicit `pi2Staged`, in `UniComplete.ProbHyp`'s style):
-
-* `Pi2ExperimentLe`: the experiment's event is at most the staged run's against the random permutation (`P1` is `P1k`
-  over it, the code commutes with the simulation, the none branch's dummy calls change nothing);
-* `Pi2RunAt`: at pure `(H, F)` the staged run is the experiment at `Id`, its priors and challenges the honest prover's
-  (the code's commutation and the prover's split at `α` and `t`, `runAt_stagedU`'s analogue);
-* `Pi2RunDuplex`, `Pi2RunCost N`, `Pi2HashBeforeAlpha` (no `32`- or `608`-byte input hashed in `A`, `P1k`'s included),
-  `Pi2TFresh εt`;
-* `Pi2Pi1Openings`: at pure `(H, F)`, on a π1 proof the graph accepts with an honest witness, the contract's three π1
-  openings of π2's honest proof accept (the calls' agreement, `Pi1OpeningsAgree`'s at an explicit Keccak-256);
-* `Pi2WitnessComplete` (`Pi2CompleteEnd`).
-
-**`recCompleteness2_pi2_staged`**: `RecCompleteness2 D P1 (pi2Prover D C (pi2Facts hD C hchk) nonceFuel)
-(delta2 N εt (N · missProb 17 ^ nonceFuel))`; **`delta2_pi2_le`**: below `2^-164` at `N ≤ 2^50`, `εt ≤ 2^-200`;
-**`recCompleteness_pi2_staged_fs`**: the recursive verifier's completeness end to end.
+**The grinding**: `rejectGood_of_pot` (mumbai's potential, as `ProbGrind`), `pot_of_rejects` (from the core at every
+pure `(H, F)`: `Pi2SimCore.rejects_at_good`), `grind_le`. **Postconditions** of the stages (`holds_restC`,
+`holds_stageC`, `holds_stageB`): off `GAccA` (π1's prover returned a proof the graph accepted) the verdict rejects.
 -/
 
 set_option linter.unusedSectionVars false
@@ -58,7 +45,7 @@ open OracleComp OracleSpec
 open LeanVM LeanVM.Rpm
 open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
-open E2ECompleteness (ro runAt HashOK)
+open E2ECompleteness (ro runAt HashOK Cache)
 open UniKeccakComplete.Prob (GoodL winState one_le_powPot_of_pcs_none)
 open Pi2S Pi2K Pi2P Pi2E
 open scoped ENNReal
@@ -88,8 +75,8 @@ def pre2 (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → m (List E)) (reads 
 /-- **From `γ` to `t`**: `Q`'s stack, commitment, out-of-domain point, root and answer. -/
 def mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E)) (pubs : List E) (w : ℕ → K)
     (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree × List E) := do
-  let qStack := padStack (stackVars G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
-    (pNovel G w) (qpNovel G w γ))
+  let qStack := padStack (stackVars G.logN).2.1 (qEntry G.logN (mulX (hNovel G w α β))
+    (qNovel G w α β γ (phiOn S pubs γ)) (pNovel G w) (qpNovel G w γ))
   let qTree ← (StateT.lift (E2ECompleteness.commitWithH H (stackVars G.logN).2.1 qStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
   let qz ← (StateT.lift (oodPt (stackVars G.logN).2.1 qTree.root) : UniComplete.WrM m (List E))
@@ -139,7 +126,7 @@ noncomputable def expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D
   | none => return (false, false)
   | some p1 =>
     let a1 ← Pi2H.pi1GraphVerifierWithH H F D trees.roots.pi1 input p1
-    match ← pi2ProverWith H F D C Fa PcsQuotient.nonceFuel input p1 with
+    match ← pi2ProverWith H F D C.G Fa.pubOf PcsQuotient.nonceFuel input p1 with
     | none => return (a1, false)
     | some p2 => return (a1, ← Pi2H.verifierWithH H F D trees.roots input p2)
 
@@ -151,6 +138,7 @@ structure StA where
   a1 : Bool
   roots : RecSetupRoots
   setupTree : LeanVM.Prover.Tree
+  claims : List (List (List UInt8))
   vw : List PublicValue × (ℕ → K)
   wS : Array K
   wT : LeanVM.Prover.Tree
@@ -174,17 +162,18 @@ noncomputable def stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts 
     (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) : m StA := do
   let trees ← Pi2H.setupTreesWithH H F D
   match ← p1o with
-  | none => return ⟨trees, none, false, trees.roots, trees.pi2, ([], fun _ ↦ 0), #[], trees.pi2, UniComplete.Wr.start default,
-      []⟩
+  | none => return ⟨trees, none, false, trees.roots, trees.pi2, [], ([], fun _ ↦ 0), #[], trees.pi2,
+      UniComplete.Wr.start default, []⟩
   | some p1 =>
     let a1 ← Pi2H.pi1GraphVerifierWithH H F D trees.roots.pi1 input p1
     let tr ← Pi2H.setupTreesWithH H F D
     let iv ← Pi2H.ivOfH H D tr.roots
-    let vw := pi2Choice D C Fa tr.roots input p1.stream
-    let seed ← H (RecStatement.name ++ iv ++ input.toList)
+    let claims := pi1ClaimsOf D tr.roots.pi1 input p1.stream
+    let vw := pi2Choice D C.G Fa.pubOf tr.roots input p1.stream claims
+    let seed ← H (RecStatement.name ++ iv ++ input.toList ++ frameWordsOf vw.1)
     let (ws, wr) ← (pre2 H (C.G tr.roots) (WhirBridge.Pcs.oodPointM H) (D.circuitAt tr.roots.pi1).circuit.reads vw.1
       vw.2).run (UniComplete.Wr.start seed)
-    return ⟨trees, some p1, a1, tr.roots, tr.pi2, vw, ws.1, ws.2.1, wr, ws.2.2⟩
+    return ⟨trees, some p1, a1, tr.roots, tr.pi2, claims, vw, ws.1, ws.2.1, wr, ws.2.2⟩
 
 /-- **Stage B**: after `α, β, γ` (their hashes `s₁, s₂, s₃`), `Q`. -/
 def stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
@@ -194,34 +183,40 @@ def stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a 
     (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run w3
   return ⟨a, chalP s₁, chalP s₂, chalP s₃, qs.1, qs.2.1, wr, qs.2.2⟩
 
-/-- **Stage C**: after `t` (its hash `st`), the rest of the prover, its openings and the contract. -/
+/-- **After `ρ`**: π2's four openings on the prover's output, the contract on the proof (π1's claims and openings
+first); the verdicts. -/
+noncomputable def restC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB)
+    (p1 : UniKeccak.KeccakProof) (out : Pi2Out) : m (Bool × Bool) := do
+  let G := C.G b.a.roots
+  let c := D.circuitAt b.a.roots.pi1
+  let o := (Spec.of c.circuit).core.run out.inputs
+  let pW ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).1 out.wPoint out.wTree out.wStack
+    o.witnessPoint o.fold
+  let pS ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.2
+    (UniKeccakComplete.pcsZ (stackVars G.logN).2.2 b.a.setupTree.root) b.a.setupTree
+    (padStack (stackVars G.logN).2.2 fun i ↦ c.setupStack.getD i 0) o.setupPoint out.inputs.ξ
+  let pQ1 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
+    o.quotientPoint o.quotientValue
+  let pQ2 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
+    o.pushesPoint o.pushesValue
+  match pW, pS, pQ1, pQ2 with
+  | some x, some y, some z1, some z2 =>
+    let v ← Pi2H.verifierWithH H F D b.a.trees.roots input
+      ⟨out.stream, b.a.claims, p1.c1, p1.c2, p1.setup, x, y, z1, z2⟩
+    return (b.a.a1, v)
+  | _, _, _, _ => return (b.a.a1, false)
+
+/-- **Stage C**: after `t` (its hash `st`), the rest of the prover (the values at `t`, `ρ` drawn in `post2`), its
+openings and the contract (`restC`); the verdicts and `ρ` with its prior `(roots, t)`. -/
 noncomputable def stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
-    m (Bool × Bool) := do
+    m ((Bool × Bool) × ((RecSetupRoots × E) × E)) := do
   match b.a.p1 with
-  | none => return (false, false)
+  | none => return ((false, false), ((b.a.roots, chalP st), 0))
   | some p1 =>
-    let G := C.G b.a.roots
-    let c := D.circuitAt b.a.roots.pi1
-    let (out, _) ← (post2 H G c.setupStack input.toList b.a.vw.1 b.a.vw.2 b.a.wS b.a.wT b.qS b.qT b.α b.β b.γ
-      (chalP st) b.a.wP b.qP).run (absorbW b.wr st)
-    let o := (Spec.of c.circuit).core.run out.inputs
-    let pW ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).1 out.wPoint out.wTree out.wStack
-      o.witnessPoint o.fold
-    let pS ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.2
-      (UniKeccakComplete.pcsZ (stackVars G.logN).2.2 b.a.setupTree.root) b.a.setupTree
-      (padStack (stackVars G.logN).2.2 fun i ↦ c.setupStack.getD i 0) o.setupPoint out.inputs.ξ
-    let pQ1 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
-      o.quotientPoint o.quotientValue
-    let pQ2 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
-      o.pushesPoint o.pushesValue
-    let pQ3 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
-      o.sumPoint o.sumValue
-    match pW, pS, pQ1, pQ2, pQ3 with
-    | some x, some y, some z1, some z2, some z3 =>
-      let v ← Pi2H.verifierWithH H F D b.a.trees.roots input
-        ⟨out.stream, p1.c1, p1.c2, p1.setup, x, y, z1, z2, z3⟩
-      return (b.a.a1, v)
-    | _, _, _, _, _ => return (b.a.a1, false)
+    let (out, _) ← (post2 H (C.G b.a.roots) (D.circuitAt b.a.roots.pi1).setupStack input.toList b.a.vw.1 b.a.vw.2
+      b.a.wS b.a.wT b.qS b.qT b.α b.β b.γ (chalP st) b.a.wP b.qP).run (absorbW b.wr st)
+    let v ← restC H F D C input b p1 out
+    return (v, ((b.a.roots, chalP st), out.inputs.ρ))
 
 end With
 
@@ -235,7 +230,8 @@ noncomputable def pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
   β := StB
   ρ := Pr2
   τ := Pr2 × E × E × E
-  inp a := fixLen 608 (UniKeccakComplete.Prob.tInput a.wr)
+  υ := RecSetupRoots × E
+  inp a := fixLen 88 (UniKeccakComplete.Prob.tInput a.wr)
   pr a := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
   A := stageA callKeccak256 callKeccakF1600 D C Fa P1k input
   B := stageB callKeccak256 D C input
@@ -252,62 +248,53 @@ noncomputable def badSet2 (C' : RecSetupRoots → RecPiop.Circuit E) (p : Pr2) :
 def badT2 (C' : RecSetupRoots → RecPiop.Circuit E) (fp : Pr2 × E × E × E) (t : E) : Prop :=
   (C' fp.1.1).Satisfies fp.1.2.2 (RecCircuit.emb fp.1.2.1) ∧ ¬ BadCopy (C' fp.1.1) fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2 ∧ BadT (C' fp.1.1) fp.1.2.1 fp.2.1 fp.2.2.1 fp.2.2.2 t
 
+/-- **The bad `ρ`** (π2v4): `Y_3 = 1 + ρ (1 + Z_V(t))` zero, at the prior's circuit and `t`. -/
+def badR2 (C' : RecSetupRoots → RecPiop.Circuit E) (fr : RecSetupRoots × E) (ρ : E) : Prop :=
+  BadRho (C' fr.1) fr.2 ρ
+
 /-! ## The named inputs -/
 
 /-- The roots of the setup at a pure `(H, F)`. -/
 abbrev rootsH (D : RecDeployment) (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) : RecSetupRoots :=
   (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Ht) Ft D)).roots
 
+/-- π1's claims as the prover takes them, at a pure `(H, F)`. -/
+abbrev claimsH (D : RecDeployment) (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState)
+    (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) : List (List (List UInt8)) :=
+  pi1ClaimsOf D (rootsH D Ht Ft).pi1 input p1.stream
+
+/-- The witness and public values π2's prover takes, at a pure `(H, F)`. -/
+noncomputable abbrev vwH (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (Ht : List UInt8 → Digest)
+    (Ft : KeccakState → KeccakState) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
+    List PublicValue × (ℕ → K) :=
+  pi2Choice D C.G Fa.pubOf (rootsH D Ht Ft) input p1.stream (claimsH D Ht Ft input p1)
+
+/-- The honest prover's transcript inputs, at a pure `(H, F)`. -/
+noncomputable abbrev inpH (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (Ht : List UInt8 → Digest)
+    (Ft : KeccakState → KeccakState) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) : Inputs E :=
+  (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (vwH D C Fa Ht Ft input p1).1
+    (vwH D C Fa Ht Ft input p1).2).inputs
+
 /-- **Named: the experiment, staged.** π2's completeness experiment's event (the graph accepting, the contract
-rejecting) is at most the staged run's against the random permutation: `P1` is `P1k` over it, the setup, the graph,
-π2's prover and the contract commute with the simulation (`keccakCallsOverRandomPermutation`), and when `P1k` returns
-none the staged run's dummy challenges change no verdict. -/
+rejecting) is at most the staged run's against the random permutation. -/
 def Pi2ExperimentLe (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D)
     (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation D.flock rows input q →
-    Pr{let v ← recCompletenessExperiment2 D P1 (pi2Prover D C Fa PcsQuotient.nonceFuel) input rows q}[
+    Pr{let v ← recCompletenessExperiment2 D P1 (pi2Prover D C.G Fa.pubOf PcsQuotient.nonceFuel) input rows q}[
       v.1 = true ∧ v.2 = false] ≤
     Pr{let z ← (simulateQ keccakCallsOverRandomPermutation (pi2Staged D C Fa (P1k input rows q) input).run).run' []}[
       z.1.1.1 = true ∧ z.1.1.2 = false]
 
-/-- **Named: the staged run at pure functions** (`UniKeccakComplete.Prob.runAt_stagedU`'s analogue: the code's commutation
-with `totalImpl H F` and the prover's split at `α` and `t`): its verdict is `expW2` at `Id`, and when `P1k` gives `p1`
-with an honest witness, its priors and challenges are the honest prover's (`outOf`'s inputs). -/
-def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
-    Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (Ht : List UInt8 → Digest)
-    (Ft : KeccakState → KeccakState),
-    (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.1 =
-      Id.run (expW2 (m := Id) (Pure.pure ∘ Ht) Ft D C Fa (pure (runAt Ht Ft (P1k input rows q))) input) ∧
-    ∀ p1, runAt Ht Ft (P1k input rows q) = some p1 →
-      (∃ vw, Pi2Good D C Fa (rootsH D Ht Ft) input p1.stream vw) →
-      (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2 =
-          (((rootsH D Ht Ft), (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2,
-            Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1)),
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ) ∧
-      (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.2 =
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t ∧
-      (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.1 =
-        (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2
-
-/-- **Named: the staged run follows the duplex discipline** (`ProverDuplex`'s, `VerifierDisc`'s, `P1k`'s). -/
+/-- **Named: the staged run follows the duplex discipline.** -/
 def Pi2RunDuplex (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation D.flock rows input q → DuplexVm (pi2Staged D C Fa (P1k input rows q) input).run []
 
-/-- **Named: the staged run's block count** is at most `N` (`P1k`'s, the setup's, the graph's, π2's prover's and
-contract's). -/
+/-- **Named: the staged run's block count** is at most `N`. -/
 def Pi2RunCost (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (N : ℕ) : Prop :=
@@ -315,34 +302,24 @@ def Pi2RunCost (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     D.pi1.HonestRelation D.flock rows input q →
     Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N
 
-/-- **Named: before `α`, nothing of `32` or `608` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
-setup's leaves and nodes, the graph's openings, π2's IV, digest and seed preimages, `W`'s tree). -/
-def Pi2HashBeforeAlpha (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
-    Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 608) (pi2Staged D C Fa (P1k input rows q) input).A
-
-/-- **Named: `t`'s input is fresh** but with probability `εt` (`TQueryFresh`'s analogue). -/
-def Pi2TFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    (εt : ℝ≥0∞) : Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation D.flock rows input q →
-    Pr{let p ← (simulateQ ro (pi2Staged D C Fa (P1k input rows q) input).pre).run ∅}[
-      p.2 (.inl ((pi2Staged D C Fa (P1k input rows q) input).tin p.1.1)) ≠ none] ≤ εt
-
-/-- **Named: π1's openings in the contract** (deterministic; `Couplings.Pi1OpeningsAgree`'s content at an explicit
-Keccak-256): at pure `(H, F)`, on a π1 proof π1-rec3's graph accepts, its openings over `(H, F)`, the witness π2's
-prover takes honest, the contract's three π1 calls on π2's honest proof decode and their openings accept. -/
-def Pi2Pi1Openings (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
+/-- **Named: π1's claims in the contract** (deterministic; `pi2_accepts`' `hp3` and `hpi1`): at pure `(H, F)`, on a
+π1 proof π1-rec4's graph accepts (its openings over `(H, F)`), the graph makes three claims and the contract's openings
+of them, with π1's three opening proofs, accept. -/
+def Pi2Pi1Openings (D : RecDeployment) : Prop :=
   ∀ (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (input : Vector UInt8 32)
-    (p1 : UniKeccak.KeccakProof) (proof : RecProof),
-    Pi2Good D C Fa (rootsH D Ht Ft) input p1.stream (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream) →
+    (p1 : UniKeccak.KeccakProof),
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D (rootsH D Ht Ft).pi1 input p1) = true →
-    Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) = some proof →
-      ∃ ops, pi1OpsOf D (rootsH D Ht Ft) input proof.stream = some ops ∧
-        Id.run (Pi2H.openSeqH (m := Id) (Pure.pure ∘ Ht) Ft ops proof) = true
+      (claimsH D Ht Ft input p1).length = 3 ∧
+      Id.run (Pi2H.pcsOpenWordsH (m := Id) (Pure.pure ∘ Ht) Ft ((claimsH D Ht Ft input p1).getD 0 []) p1.c1) = true ∧
+      Id.run (Pi2H.pcsOpenWordsH (m := Id) (Pure.pure ∘ Ht) Ft ((claimsH D Ht Ft input p1).getD 1 []) p1.c2) = true ∧
+      Id.run (Pi2H.pcsOpenWordsH (m := Id) (Pure.pure ∘ Ht) Ft ((claimsH D Ht Ft input p1).getD 2 []) p1.setup) = true
+
+/-- **Named: the circuit compiler's completeness** (`pi2_accepts`' `hgood`; `Pi2Witness`'s `Pi2WitnessComplete`): on a
+stream whose π1-rec4 graph checks hold, an honest witness exists for the claims the graph makes. -/
+def Pi2WitnessExists (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
+  ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (s : Array UInt8),
+    pi1GraphChecks (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input s = true →
+      ∃ vw, Pi2Good D C.G Fa.pubOf roots input s (pi1ClaimsOf D roots.pi1 input s) vw
 
 /-! ## The core at pure functions -/
 
@@ -350,7 +327,7 @@ def Pi2Pi1Openings (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) :
 theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState → Id KeccakState} {D : RecDeployment}
     {roots : UniKeccak.SetupRootsK} {input : Vector UInt8 32} {p1 : UniKeccak.KeccakProof}
     (h : Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) = true) :
-    pi1GraphChecks (D.pi1IvAt roots) input p1.stream = true := by
+    pi1GraphChecks (pi1GraphAt roots) (D.pi1IvAt roots) input p1.stream = true := by
   unfold Pi2H.pi1GraphVerifierWithH at h
   unfold pi1GraphChecks
   split at h
@@ -372,7 +349,7 @@ def PcsFails (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (
 /-- **π2's honest prover returns none only at a failed opening.** -/
 theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
     (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
-    (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = none) :
+    (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C.G Fa.pubOf fuel input p1) = none) :
     PcsFails Hk F fuel := by
   rw [pi2ProverWith_run] at hp
   simp only at hp
@@ -380,7 +357,7 @@ theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
   simp only at hp
   set roots := (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots
   have hview := view_logN24 Fa roots
-  obtain ⟨lW, lS, lQ, lP, lSum⟩ := Pi2K.run_points_length (Spec.of (D.circuitAt roots.pi1).circuit).core
+  obtain ⟨lW, lS, lQ, lP⟩ := Pi2K.run_points_length (Spec.of (D.circuitAt roots.pi1).circuit).core
     (by rw [spec_core_logN, hview]) (by rw [spec_core_logRow, view_logRow4 Fa roots]) _
   rw [logN_G Fa roots, Pi2W.stackVars_24] at hp
   simp only at hp
@@ -391,8 +368,6 @@ theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
     ((Spec.of _).core.run _).quotientValue = rQ1
   generalize hQ2 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).pushesValue = rQ2
-  generalize hQ3 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
-    ((Spec.of _).core.run _).sumValue = rQ3
   intro hp
   rcases rW with _ | a
   · exact ⟨_, _, _, _, _, _, lW, hW⟩
@@ -402,8 +377,6 @@ theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
   · exact ⟨_, _, _, _, _, _, lQ, hQ1⟩
   rcases rQ2 with _ | d
   · exact ⟨_, _, _, _, _, _, lP, hQ2⟩
-  rcases rQ3 with _ | e
-  · exact ⟨_, _, _, _, _, _, lSum, hQ3⟩
   simp at hp
 
 /-- **The experiment at `Id`, π1's prover giving none.** -/
@@ -415,7 +388,7 @@ theorem expW2_none (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 theorem expW2_some (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (D : RecDeployment)
     (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     Id.run (expW2 (m := Id) (Pure.pure ∘ Ht) Ft D C Fa (pure (some p1)) input) =
-      match Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) with
+      match Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C.G Fa.pubOf PcsQuotient.nonceFuel input p1) with
       | none => (Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D
           (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Ht) Ft D)).roots.pi1 input p1), false)
       | some p2 => (Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D
@@ -424,81 +397,18 @@ theorem expW2_some (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
           (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Ht) Ft D)).roots input p2)).1) := by
   unfold expW2
   simp only [pure_bind]
-  generalize pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1 = x
+  generalize pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C.G Fa.pubOf PcsQuotient.nonceFuel input p1 = x
   cases x with
   | none => rfl
   | some p2 => rfl
 
-/-- **A non-hole position** in π2's circuit: `38` ports (the view check) of `2^24` positions. -/
-theorem nonHole_pi2 {D : RecDeployment} (C : Pi2Circuits D) (hchk : Pi2ViewChecked C) (Fa : Pi2Facts D C)
-    (roots : RecSetupRoots) : ∃ i < (C.G roots).N, ¬ (C.G roots).IsHole i := by
-  obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
-  have hnP : (C.G roots).nP = 38 := by
-    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 38
-    rw [List.length_map, Array.length_toList, viewOf_ports hview]
-  have hc := RecPiop.Circuit.card_holes (Fa.valid roots)
-  by_contra hno
-  simp only [not_exists, not_and, not_not] at hno
-  have hall : (Finset.range (C.G roots).N).filter (C.G roots).IsHole = Finset.range (C.G roots).N :=
-    Finset.filter_true_of_mem fun i hi ↦ hno i (Finset.mem_range.mp hi)
-  rw [hall, Finset.card_range, hnP, RecPiop.Circuit.N, logN_G Fa roots] at hc
-  norm_num at hc
+/-- The run's outcome type of `pi2Staged`. -/
+abbrev Z2 : Type := ((Bool × Bool) × ((Pr2 × E × E × E) × E) × ((RecSetupRoots × E) × E)) × (Pr2 × E × E × E)
 
-open Classical in
-/-- **The core at pure `(H, F)`**: on a staged run whose graph accepts and whose contract rejects at good challenges,
-one of π2's openings fails its proof of work. From `Pi2RunAt`, the witness's completeness, π1's openings and
-`pi2_accepts`. -/
-theorem rejects_at {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    (hrun : Pi2RunAt D C Fa P1k) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
-    (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState)
-    (z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E))
-    (hz : runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run = z)
-    (hev : z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2) :
-    PcsFails Ht Ft PcsQuotient.nonceFuel := by
-  obtain ⟨h1, h2⟩ := hrun input rows q Ht Ft
-  rw [hz] at h1 h2
-  obtain ⟨ha1, ha2, hB, hT⟩ := hev
-  rw [h1] at ha1 ha2
-  cases hp1 : runAt Ht Ft (P1k input rows q) with
-  | none =>
-    rw [hp1, expW2_none] at ha1
-    exact absurd ha1 (by decide)
-  | some p1 =>
-    rw [hp1, expW2_some] at ha1 ha2
-    cases hpr : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) with
-    | none => exact pi2Prover_none Fa Ht Ft _ input p1 hpr
-    | some proof =>
-      exfalso
-      rw [hpr] at ha1 ha2
-      dsimp only at ha1 ha2
-      have hgood := pi2Choice_good (hwc _ _ _ (graphChecks_of_verifierH ha1))
-      obtain ⟨hz2, hzt, hzp⟩ := h2 p1 hp1 ⟨_, hgood⟩
-      rw [hzp, hz2, hzt] at hT
-      rw [hz2] at hB
-      have hbad : ¬ BadCopy (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
-          (Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1))
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ :=
-        fun hb ↦ hB (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hb⟩)
-      have ht : ¬ BadT (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
-            (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t :=
-        fun hb ↦ hT ⟨hgood.2.1, hbad, hb⟩
-      have hacc := pi2_accepts D hD C Fa Ft Ht PcsQuotient.nonceFuel input p1 hgood (logN_G Fa _)
-        (by rw [Fa.logW]; rfl) proof hpr hroots hbad ht (hpo Ht Ft input p1 proof hgood ha1 hpr)
-      exact absurd (hacc.symm.trans ha2) (by decide)
+/-- **The good event**: the graph accepting, the contract rejecting at good challenges (the triple, `t`, `ρ`). -/
+def GoodRej (C' : RecSetupRoots → RecPiop.Circuit E) (z : Z2) : Prop :=
+  z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C' z.2.1 ∧ ¬ badT2 C' z.1.2.1.1 z.1.2.1.2 ∧
+    ¬ badR2 C' z.1.2.2.1 z.1.2.2.2
 
 /-! ## The grinding -/
 
@@ -582,102 +492,61 @@ theorem grind_le {N : ℕ} (hN : N ≤ 2 ^ 50) :
     _ = (2 : ℝ≥0∞)⁻¹ ^ 302 := E2ECompleteness.two_pow_mul_inv_pow 2 302
     _ ≤ (2 : ℝ≥0∞)⁻¹ ^ 300 := E2ECompleteness.inv_pow_le_inv_pow (by norm_num)
 
-/-! ## π2's completeness -/
+/-! ## Off the graph's acceptance the verdict rejects -/
 
-/-- **The grinding for π2** (`Holds.rejectGood`): the staged run rejected at good challenges, the graph accepting,
-with probability at most `N · (1 − 2^-17)^nonceFuel`. -/
-theorem rejectGood_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    (hrun : Pi2RunAt D C Fa P1k) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) {N : ℕ}
-    (hcost : Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N) :
-    Pr{let z ← (simulateQ ro (pi2Staged D C Fa (P1k input rows q) input).run).run' ∅}[
-      z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2] ≤
-      (N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel :=
-  rejectGood_of_pot _ _ hcost fun ℓ z hz hev ↦
-    pot_of_rejects _ (fun z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E) ↦
-      z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2)
-      (fun Ht Ft hev' ↦ rejects_at hD C Fa hroots hwc hpo P1k hrun input rows q Ht Ft _ rfl hev') ℓ z hz hev
+/-- **The graph accepted**: π1's prover returned a proof and π1-rec4's graph accepted it. -/
+def GAccA (a : StA) : Prop := a.p1.isSome = true ∧ a.a1 = true
 
-/-- **The staged run's `Holds`**, at the real deployment's facts: the named facts, the lengths, the counts, the
-grinding. -/
-theorem holds_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    {N : ℕ} {εt : ℝ≥0∞}
-    (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
-    (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
-    (hhash : Pi2HashBeforeAlpha D C (pi2Facts hD C hchk) P1k) (htf : Pi2TFresh D C (pi2Facts hD C hchk) P1k εt)
-    (hpo : Pi2Pi1Openings D C (pi2Facts hD C hchk)) (hwc : Pi2WitnessComplete D C (pi2Facts hD C hchk))
-    (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
-    (hrel : D.pi1.HonestRelation D.flock rows input q) :
-    (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds D P1
-      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 608 (badSet2 C.G) (badT2 C.G)
-      (2 ^ 25 + 36) (9 * 2 ^ 24) N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
-  experiment := hexp input rows q hfit hrel
-  duplex := hdup input rows q hfit hrel
-  cost := hcost input rows q hfit hrel
-  L_ne := by norm_num
-  inp_length _ := fixLen_length 608 _
-  hashA := hhash input rows q hfit hrel
-  badCard p := card_badCopy_pi2 (pi2Facts hD C hchk) p.1 p.2.1 p.2.2
-  badTCard fp := card_badT_pi2 (pi2Facts hD C hchk) fp.1.1 fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2
-    (nonHole_pi2 C hchk (pi2Facts hD C hchk) fp.1.1)
-  tFresh := htf input rows q hfit hrel
-  rejectGood := rejectGood_pi2 hD C (pi2Facts hD C hchk) hroots hwc hpo P1k hrun input rows q
-    (hcost input rows q hfit hrel)
+section Holds
 
-/-- **π2's completeness, from the staged run's named facts** (at the real deployment's facts `pi2Facts hD C hchk`):
-`RecCompleteness2 D P1 (pi2Prover …) (delta2 N εt (N · (1 − 2^-17)^nonceFuel))`. Proved here: the lengths, the bad
-sets' counts, the grinding (from `Pi2RunAt`, `Pi2Pi1Openings`, `Pi2WitnessComplete` and the core). -/
-theorem recCompleteness2_pi2_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    {N : ℕ} {εt : ℝ≥0∞}
-    (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
-    (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
-    (hhash : Pi2HashBeforeAlpha D C (pi2Facts hD C hchk) P1k) (htf : Pi2TFresh D C (pi2Facts hD C hchk) P1k εt)
-    (hpo : Pi2Pi1Openings D C (pi2Facts hD C hchk)) (hwc : Pi2WitnessComplete D C (pi2Facts hD C hchk)) :
-    RecCompleteness2 D P1 (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel)
-      (delta2 N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel)) :=
-  recCompleteness2_of_staged fun input rows q hfit hrel ↦
-    ⟨_, _, _, holds_pi2 hD C hchk hroots P1 P1k hexp hrun hdup hcost hhash htf hpo hwc input rows q hfit hrel⟩
+variable {m : Type → Type} [Monad m] [LawfulMonad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- **`δ2` in bits**: below `2^-164` at `N ≤ 2^50` block calls and `εt ≤ 2^-200`. -/
-theorem delta2_pi2_le {N : ℕ} {εt : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ht : εt ≤ (2 : ℝ≥0∞)⁻¹ ^ 200) :
-    delta2 N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) ≤ (2 : ℝ≥0∞)⁻¹ ^ 164 :=
-  delta2_le hN ht (grind_le hN)
+theorem holds_restC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB)
+    (p1 : UniKeccak.KeccakProof) (out : Pi2Out) :
+    Holds (restC H F D C input b p1 out) fun v ↦ v.1 = b.a.a1 := by
+  unfold restC
+  refine holds_bind (holds_true _) fun pW _ ↦ holds_bind (holds_true _) fun pS _ ↦
+    holds_bind (holds_true _) fun pQ1 _ ↦ holds_bind (holds_true _) fun pQ2 _ ↦ ?_
+  split
+  · exact holds_bind (holds_true _) fun _ _ ↦ holds_pure rfl
+  · exact holds_pure rfl
 
-/-- **The recursive verifier's completeness end to end**, with π2's honest prover at the real deployment's facts: from
-π2's staged facts (named above), π1-rec3's completeness at Keccak-f[1600] and its honest proofs' hazard. -/
-theorem recCompleteness_pi2_staged_fs {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
-    {N : ℕ} {εt : ℝ≥0∞}
-    (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
-    (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
-    (hhash : Pi2HashBeforeAlpha D C (pi2Facts hD C hchk) P1k) (htf : Pi2TFresh D C (pi2Facts hD C hchk) P1k εt)
-    (hpo : Pi2Pi1Openings D C (pi2Facts hD C hchk)) (hwc : Pi2WitnessComplete D C (pi2Facts hD C hchk))
-    (δ1 δh : ℝ≥0∞) (h1 : Pi1CompletenessKeccak D P1 δ1) (hh : Pi1HazardKeccakHonest D P1 δh) :
-    RecCompletenessWith D (composeProver D P1 (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel))
-      (δ1 + δh + delta2 N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel)) :=
-  recCompleteness_end_fs D hD P1 _ _
-    (recCompleteness2_pi2_staged hD C hchk hroots P1 P1k hexp hrun hdup hcost hhash htf hpo hwc) δ1 δh h1 hh
+theorem holds_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest)
+    (hb : ¬ GAccA b.a) : Holds (stageC H F D C input b st) fun z ↦ z.1.1 = false := by
+  unfold stageC
+  rcases hp : b.a.p1 with _ | p1
+  · exact holds_pure rfl
+  · have ha1 : b.a.a1 = false := by
+      unfold GAccA at hb
+      rw [hp] at hb
+      simpa using hb
+    refine holds_bind (holds_true _) fun x _ ↦ ?_
+    rcases x with ⟨out, w⟩
+    exact holds_bind (holds_restC H F D C input b p1 out) fun v hv ↦ holds_pure (hv.trans ha1)
+
+theorem holds_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
+    (s₁ s₂ s₃ : Digest) : Holds (stageB H D C input a s₁ s₂ s₃) fun b ↦ b.a = a := by
+  unfold stageB
+  refine holds_bind (holds_true _) fun x _ ↦ ?_
+  rcases x with ⟨qs, wr⟩
+  exact holds_pure rfl
+
+end Holds
+
+/-- A postcondition of a two-call computation holds on its random-oracle run's support. -/
+theorem holds_ro_support {α : Type} {X : OracleComp KeccakCalls α} {P : α → Prop} (h : Holds X P) (c : Cache)
+    (z : α × Cache) (hz : z ∈ support ((simulateQ ro X).run c)) : P z.1 := by
+  have h2 := holds_run' (holds_simulateQ ro h) c
+  refine holds_support h2 z.1 ?_
+  rw [StateT.run'_eq, support_map]
+  exact ⟨z, hz, rfl⟩
+
+/-- **A postcondition at `Id`** holds of the value. -/
+theorem holds_id {α : Type} {X : Id α} {P : α → Prop} (h : Holds X P) : P (Id.run X) :=
+  of_eq_true (congrArg Prod.snd h)
 
 end RecCompose.Pi2G
 
-/-- info: 'RecCompose.Pi2G.rejects_at' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi2G.rejectGood_of_pot' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi2G.rejects_at
-
-/-- info: 'RecCompose.Pi2G.recCompleteness2_pi2_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2G.recCompleteness2_pi2_staged
-
-/-- info: 'RecCompose.Pi2G.delta2_pi2_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2G.delta2_pi2_le
-
-/-- info: 'RecCompose.Pi2G.recCompleteness_pi2_staged_fs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2G.recCompleteness_pi2_staged_fs
+#print axioms RecCompose.Pi2G.rejectGood_of_pot

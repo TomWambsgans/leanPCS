@@ -141,14 +141,14 @@ def poolPop : BM (Option (ℕ × ℕ)) := do
     return some (s.pool.getD s.poolHead (0, 0))
   else return none
 
-/-- A round's rows (`D16::round_rows`): 64 `k0` (their D units to the pool), 4 × 64 `k1` (their spare role to the
-constants). -/
-def roundRows : BM (Array ℕ × Array (Array ℕ)) := do
+/-- A round's rows (`D16::round_rows`): 64 `k0` (their D units to the pool), `(planes − 1)` × 64 `k1` (their spare role
+to the constants): the χ rows of planes `0 .. planes`. -/
+def roundRows (planes : ℕ) : BM (Array ℕ × Array (Array ℕ)) := do
   let s ← get
   let mut k0 : Array ℕ := #[]
   for _ in [0:64] do k0 := k0.push (← row s.k0)
   let mut k1 : Array (Array ℕ) := #[]
-  for _ in [1:5] do
+  for _ in [1:planes] do
     let mut plane : Array ℕ := #[]
     for _ in [0:64] do plane := plane.push (← row s.k1)
     k1 := k1.push plane
@@ -174,11 +174,15 @@ def dMix (c : Array Val) : BM (Array Val) := do
       d := d.set! (64 * x + z) (← produce r slot)
   return d
 
-/-- **D16v's Keccak-f of `input`** (`D16::permute`): its output's 1600 values; its trace is pushed to `keccaks`. -/
-def permute (input : Array Bit) : BM (Array Val) := do
+/-- **D16v's Keccak-f of `input`** (`D16::permute`), whose caller reads lanes `0 .. lanes`: its output's 1600 values,
+the last round making the planes of those lanes alone (`⌈lanes/5⌉`), the others' bits `NONE` (`UNMADE`); its trace is
+pushed to `keccaks`. -/
+def permute (input : Array Bit) (lanes : ℕ) : BM (Array Val) := do
   need (input.size == 1600) "a permutation's input is 1600 bits"
+  need (1 ≤ lanes && lanes ≤ 25) "a permutation's lanes read"
+  let lastPlanes := (lanes + 4) / 5
   let mut rounds : Array (Array ℕ × Array (Array ℕ)) := #[]
-  for _ in [0:24] do rounds := rounds.push (← roundRows)
+  for j in [0:24] do rounds := rounds.push (← roundRows (if j == 23 then lastPlanes else 5))
   let mut a : Array Val := #[]
   for x in input do
     a := a.push (← match x with
@@ -206,15 +210,17 @@ def permute (input : Array Bit) : BM (Array Val) := do
   for j in [0:24] do
     let rc := keccakRC.getD j 0
     let (k0, k1) := rounds.getD j default
+    let planesJ := 1 + k1.size
     let rowOf := fun (plane z : ℕ) => if plane == 0 then k0.getD z 0 else (k1.getD (plane - 1) #[]).getD z 0
     for l in [0:25] do
       let (xp, yp) := (PI l % 5, PI l / 5)
-      for z in [0:64] do
-        let rw := rowOf yp ((z + rho l) % 64)
-        place rw xp (a.getD (64 * l + z) 0)
-        place rw (5 + xp) (d.getD (64 * (l % 5) + z) 0)
-    let mut out : Array Val := Array.replicate 1600 0
-    let mut p : Array Val := Array.replicate 320 0
+      if yp < planesJ then
+        for z in [0:64] do
+          let rw := rowOf yp ((z + rho l) % 64)
+          place rw xp (a.getD (64 * l + z) 0)
+          place rw (5 + xp) (d.getD (64 * (l % 5) + z) 0)
+    let mut out : Array Val := Array.replicate 1600 NONE
+    let mut p : Array Val := Array.replicate 320 NONE
     for z in [0:64] do
       let rw := k0.getD z 0
       if rc >>> z.toUInt64 &&& 1 == 1 then
@@ -222,9 +228,11 @@ def permute (input : Array Bit) : BM (Array Val) := do
         setKappa rw 5 1
       for x in [0:5] do
         out := out.set! (64 * x + z) (← produce rw x)
-        p := p.set! (64 * x + z) (← produce rw (5 + x))
+        -- Without plane 1's rows, `P_0` is read by none: its slot is not made (it pushes junk).
+        if planesJ > 1 then
+          p := p.set! (64 * x + z) (← produce rw (5 + x))
     let mut planes : Array (Array Val) := #[p]
-    for yp in [1:5] do
+    for yp in [1:planesJ] do
       for z in [0:64] do
         let rw := (k1.getD (yp - 1) #[]).getD z 0
         for x in [0:5] do
@@ -241,15 +249,18 @@ def permute (input : Array Bit) : BM (Array Val) := do
       trC := trC.push c
       d ← dMix c
       trD := trD.push d
-  modify fun s => { s with keccaks := s.keccaks.push ⟨trA, trC, trD, trP⟩ }
+  modify fun s => { s with keccaks := s.keccaks.push ⟨trA, trC, trD, trP, lastPlanes⟩ }
   return a
 
 /-! ## Keccak-256's sponge (`keccak::Sponge`) -/
 
 def RATE_BITS : ℕ := 1088
 
-/-- Keccak-256 of `message` (bits in byte order, low bit first): the digest's 256 values (`Sponge::keccak256`). -/
-def keccak256 (message : Array Bit) : BM (Array Val) := do
+/-- **Keccak-256's sponge on `message`** (bits in byte order, low bit first): its first `lanes` lanes after the last
+permutation, `64 · lanes` values in byte order (`Sponge::keccak256_lanes`: `4 ≤ lanes ≤ 17`, the digest then the rest
+of the rate); a later block reads the whole state, the last the lanes asked for. -/
+def keccak256Lanes (message : Array Bit) (lanes : ℕ) : BM (Array Val) := do
+  need (4 ≤ lanes && lanes ≤ 17) "the digest's lanes and the rate's"
   need (message.size % 8 == 0) "whole bytes"
   let blocks := message.size / RATE_BITS + 1
   let paddedLen := blocks * RATE_BITS
@@ -277,11 +288,17 @@ def keccak256 (message : Array Bit) : BM (Array Val) := do
         input := input.set! i (.v (state.getD i 0))
     inputs := inputs.push input
     perms := perms.push (← get).keccaks.size
-    state ← permute input
-    modify fun s => { s with permutations := s.permutations + 1 }
-  let digest := state.extract 0 256
-  modify fun s => { s with sponges := s.sponges.push ⟨message, perms, inputs, digest⟩ }
-  return digest
+    let read := if block + 1 == blocks then lanes else 25
+    state ← permute input read
+    modify fun s => { s with permutations := s.permutations + 1, planesUnmade := s.planesUnmade + (5 - (read + 4) / 5) }
+  let out := state.extract 0 (64 * lanes)
+  need (!out.contains NONE) "the lanes asked for are made"
+  let digest := out.extract 0 256
+  modify fun s => { s with sponges := s.sponges.push ⟨message, perms, inputs, digest, lanes, out⟩ }
+  return out
+
+/-- Keccak-256 of `message` (bits in byte order, low bit first): the digest's 256 values (`Sponge::keccak256`). -/
+def keccak256 (message : Array Bit) : BM (Array Val) := keccak256Lanes message 4
 
 /-! ## Free bits (`units::Bools`) -/
 
@@ -302,6 +319,23 @@ def bitAndCopy : BM (Val × Val) := do
   place r role v
   let c ← produce r (role + 1)
   return (v, c)
+
+/-! ## Copies (`units::Copies`) -/
+
+def copyRoles (w : ℕ) : Array Formula := (List.range w).toArray.map fun c =>
+  if c % 2 == 0 then .expr ((PolyBuilder.mk []).linear (c + 1) 1).build else .forward
+
+def initCopies : BM Unit := do
+  let w ← width
+  let r ← region "copy" (copyRoles w)
+  modify fun s => { s with copyUnits := Units.new r 2 (w / 2) }
+
+/-- A copy of `v` (placed here at a forward), which may end at a slot (`Copies::copy`). -/
+def copy (v : Val) : BM Val := do
+  let (u, r, base) ← (← get).copyUnits.next
+  modify fun s => { s with copyUnits := u }
+  place r (base + 1) v
+  produce r base
 
 /-! ## Packings (`units::Packer`) -/
 

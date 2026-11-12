@@ -74,7 +74,7 @@ theorem length_squares : ∀ (c : E) (n : ℕ), (squares c n).length = n
 first and its squares (the others). -/
 def drawBlocks : FsShape → ℕ → ℕ
   | .main, count => count
-  | .rec1, _ | .rec2, _ | .rec3, _ => 1
+  | .rec1, _ | .rec2, _ | .rec3, _ | .rec4, _ => 1
 
 /-- **A run of draws**: `drawBlocks` challenges, `count` terms. -/
 theorem wc_drawW (fs : FsShape) (count : ℕ) :

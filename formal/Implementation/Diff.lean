@@ -10,7 +10,7 @@ import Common.Sponge
 `lake env lean --run Implementation/Diff.lean VECTORS`: each line of `VECTORS` (written by
 `LEAN_VECTORS=VECTORS cargo test -p evm write_lean_vectors -- --ignored`, `crates/membership/evm/src/lean.rs`)
 is the circuit's commitment (its root, its out-of-domain answer's 24 bytes), calldata of the verifier
-without its last byte (the frame's index), and the six PCS claims the Rust verifier
+without its last byte (the frame's index), and the three PCS claims the Rust verifier
 (`quotient::protocol::verify`) has the contract check declared, back to back (or `reject`), in hex. The
 interpreter (`run` and `calls`, with leanerVM's Keccak-256, the commitment in storage, a frame index `0`
 appended) must give the same bytes on every line.

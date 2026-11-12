@@ -54,10 +54,13 @@ def ElemInv (c : Compiled) (r : Recorded) (w : ℕ → K) (id : ℕ) : Prop :=
     F192.ofLimbs (c.ctx.val w ((c.limbsOf id).getD 0 NONE)) (c.ctx.val w ((c.limbsOf id).getD 1 NONE))
       (c.ctx.val w ((c.limbsOf id).getD 2 NONE)) = ((c.valsW r w).getD id default).toE
 
-/-- A seed's or hash's digest values carry its state's bits. -/
+/-- A seed's or hash's digest values carry its state's bits, and a hash's rate values (where a wide challenge reads
+them) its sponge rate's bits. -/
 def StateInv (c : Compiled) (r : Recorded) (w : ℕ → K) (id : ℕ) : Prop :=
-  ∃ d, c.digests.getD id none = some d ∧ d.size = 256 ∧ ((c.valsW r w).getD id default).toState.length = 32 ∧
-    ∀ k < 256, c.ctx.val w (d.getD k NONE) = ofBool (bitOf ((c.valsW r w).getD id default).toState k)
+  (∃ d, c.digests.getD id none = some d ∧ d.size = 256 ∧ ((c.valsW r w).getD id default).toState.length = 32 ∧
+    ∀ k < 256, c.ctx.val w (d.getD k NONE) = ofBool (bitOf ((c.valsW r w).getD id default).toState k)) ∧
+  ∀ rt, c.rates.getD id none = some rt → rt.size ≤ 1088 ∧ ((c.valsW r w).getD id default).toRate.length = 136 ∧
+    ∀ k < rt.size, c.ctx.val w (rt.getD k NONE) = ofBool (bitOf ((c.valsW r w).getD id default).toRate k)
 
 def NodeInv (c : Compiled) (r : Recorded) (w : ℕ → K) (id : ℕ) : Prop :=
   if isStateNode (c.nodes.getD id default) then c.StateInv r w id else c.ElemInv r w id
@@ -175,7 +178,7 @@ theorem digest_bits {id : ℕ} (hs : c.StateInv r w id) {d : Array ℕ} (hd : c.
     (first i j : ℕ) (hq : 8 * (first + i) + j < 256) (hj : j < 8) :
     c.ctx.val w (d.getD (8 * (first + i) + j) NONE) =
       ofBool ((((c.valsW r w).getD id default).toState.getD (first + i) 0).toNat.testBit j) := by
-  obtain ⟨d', hd', _, _, hbits⟩ := hs
+  obtain ⟨⟨d', hd', _, _, hbits⟩, _⟩ := hs
   rw [hd] at hd'; cases hd'
   rw [hbits _ hq, bitOf, show (8 * (first + i) + j) / 8 = first + i by omega,
     show (8 * (first + i) + j) % 8 = j by omega]
@@ -202,7 +205,7 @@ theorem inv_low (hc : c.Checked r) (G : c.ctx.Good w) {id : ℕ} (hid : id < c.n
   have h1 := hok.2.1.2
   have h0 := hok.2.1.1.2
   have hs := hok.2.1.1.1.2
-  have ⟨d, hd, _, hlen, _⟩ := ih
+  have ⟨⟨d, hd, _, hlen, _⟩, _⟩ := ih
   rw [hd, Option.getD_some] at h0 h1 h2
   have W := fun (first : ℕ) (hf : first + 8 ≤ 32) (u : ℕ)
       (hp : c.packIs c.packOf u (beBits (fun i => d.getD i NONE) first 8) = true) =>
@@ -221,7 +224,7 @@ theorem inv_narrow (hc : c.Checked r) (G : c.ctx.Good w) {id : ℕ} (hid : id < 
   have h1 := hok.2.1.2
   have h0 := hok.2.1.1.2
   have hs := hok.2.1.1.1.2
-  have ⟨d, hd, _, hlen, _⟩ := ih
+  have ⟨⟨d, hd, _, hlen, _⟩, _⟩ := ih
   rw [hd, Option.getD_some] at h0 h1 h2
   have W := fun (first n : ℕ) (hf : first + n ≤ 32) (u : ℕ)
       (hp : c.packIs c.packOf u (beBits (fun i => d.getD i NONE) first n) = true) =>
@@ -231,6 +234,31 @@ theorem inv_narrow (hc : c.Checked r) (G : c.ctx.Good w) {id : ℕ} (hid : id < 
   rw [valsW_step hc hid hl, hnode, W 24 8 (by norm_num) _ h0, W 16 8 (by norm_num) _ h1, W 12 4 (by norm_num) _ h2]
   simp only [Graph.step, Value.toE, narrowOf, elemOfNats]
   rw [beNat_slice_mod _ hlen]
+
+theorem inv_wide (hc : c.Checked r) (G : c.ctx.Good w) {id : ℕ} (hid : id < c.nodes.size)
+    (hl : c.live.getD id false = true) {h k : ℕ} (hnode : c.nodes.getD id default = .wide h k)
+    (ih : c.StateInv r w h) : c.ElemInv r w id := by
+  have hok := hc.nodes id hid hl
+  simp only [nodeOk, hnode] at hok
+  split at hok
+  · rename_i rt hrt
+    simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hok
+    obtain ⟨⟨⟨⟨⟨⟨_, -⟩, hsz⟩, hs⟩, h0⟩, h1⟩, h2⟩ := hok
+    obtain ⟨hrs, hrlen, hrbits⟩ := ih.2 rt hrt
+    set rate := ((c.valsW r w).getD h default).toRate
+    have W := fun (first : ℕ) (hf : first + 8 ≤ 24 * k + 32) (u : ℕ)
+        (hp : c.packIs c.packOf u (beBits (fun i => rt.getD i NONE) first 8) = true) =>
+      packBE_word hc G (fun i => rt.getD i NONE) rate first 8 (by rw [hrlen]; omega)
+        (fun i hi j hj => by
+          rw [hrbits _ (by omega)]
+          simp only [bitOf]
+          rw [show (8 * (first + i) + j) / 8 = first + i by omega, show (8 * (first + i) + j) % 8 = j by omega]) hp
+    refine ⟨hs, ?_⟩
+    rw [valsW_step hc hid hl, hnode, W (24 * k + 24) (by omega) _ h0, W (24 * k + 16) (by omega) _ h1,
+      W (24 * k + 8) (by omega) _ h2]
+    simp only [Graph.step, Value.toE, challengeAtL, elemOfNats]
+    rfl
+  · cases hok
 
 /-! ## `E` units -/
 
@@ -349,7 +377,7 @@ theorem elem_of_limbs3 (hc : c.Checked r) {x : ℕ} (hx : x < c.nodes.size) (hlx
     simp only [nodeOk, hn] at hok
     split at hok
     · simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hok
-      simp [limbsOf, hok.1.2] at h3
+      simp [limbsOf, hok.1.1.2] at h3
     · cases hok
   | hash s f t =>
     simp only [nodeOk, hn] at hok
@@ -744,6 +772,70 @@ theorem bitOf_append_right (A B : List UInt8) (i : ℕ) (h : A.length ≤ i / 8)
 
 theorem NAME_length : NAME.length = 16 := by decide +kernel
 
+theorem isStateNode_of_isHash (n : Node) (h : n.isHash = true) : isStateNode n = true := by
+  cases n <;> simp_all [Node.isHash, isStateNode]
+
+theorem spongeRateIs_spec {d : Array ℕ} {m : Array Bit} {rt : Option (Array ℕ)} (h : c.spongeRateIs d m rt = true) :
+    ∃ sp ∈ c.st.sponges, sp.digest = d ∧ sp.message = m ∧ ∀ o, rt = some o → sp.out = o := by
+  unfold spongeRateIs at h
+  obtain ⟨i, hi, hp⟩ := Array.any_eq_true.mp h
+  simp only [Bool.and_eq_true, beq_iff_eq] at hp
+  refine ⟨_, Array.getElem_mem hi, hp.1.1, hp.1.2, fun o ho => ?_⟩
+  have := hp.2
+  rw [ho] at this
+  simpa using this
+
+/-- The flat bytes of fixed-length-8 lists. -/
+theorem flatMap_range8_length (f : ℕ → List UInt8) (hf : ∀ i, (f i).length = 8) :
+    ∀ n, ((List.range n).flatMap f).length = 8 * n
+  | 0 => rfl
+  | n + 1 => by
+    rw [List.range_succ, List.flatMap_append, List.length_append, flatMap_range8_length f hf n]
+    simp [hf]; ring
+
+theorem flatMap_range8_getD (f : ℕ → List UInt8) (hf : ∀ i, (f i).length = 8) :
+    ∀ (n p : ℕ), p < 8 * n → ((List.range n).flatMap f).getD p 0 = (f (p / 8)).getD (p % 8) 0 := by
+  intro n
+  induction n with
+  | zero => intro p hp; omega
+  | succ n ih =>
+    intro p hp
+    have hlen := flatMap_range8_length f hf n
+    rw [List.range_succ, List.flatMap_append]
+    by_cases h : p < 8 * n
+    · rw [List.getD_append _ _ _ _ (by rw [hlen]; exact h), ih p h]
+    · rw [List.getD_append_right _ _ _ _ (by rw [hlen]; omega), hlen]
+      simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil]
+      rw [show p / 8 = n by omega, show p - 8 * n = p % 8 by omega]
+
+/-- Bit `k < 1088` of a state's rate bytes is the state's bit. -/
+theorem rate_bit (st : LeanVM.Semantics.KeccakState) (k : ℕ) (hk : k < 1088) :
+    bitOf (UniStatement.rateBytesOf st) k = laneBits st (k / 64) (k % 64) := by
+  unfold bitOf UniStatement.rateBytesOf
+  rw [flatMap_range8_getD _ (fun i => by simp [wordBytes]) 17 (k / 8) (by omega),
+    wordBytes_bit _ _ _ (Nat.mod_lt _ (by decide)) (Nat.mod_lt _ (by decide)),
+    show 8 * (k / 8 % 8) + k % 8 = k % 64 by omega, show k / 8 / 8 = k / 64 by omega]
+  rfl
+
+theorem rateBytesOf_length (st : LeanVM.Semantics.KeccakState) : (UniStatement.rateBytesOf st).length = 136 := by
+  unfold UniStatement.rateBytesOf
+  rw [flatMap_range8_length _ (fun i => by simp [wordBytes])]
+
+/-- **Keccak-256's rate after its last permutation, bit by bit, is the sponge.** -/
+theorem keccakState_rate_bits (data : List UInt8) (k : ℕ) (hk : k < 1088) :
+    bitOf (UniStatement.rateBytesOf (keccakState data)) k =
+      spongeState (bitOf data) (8 * data.length) (8 * data.length / 1088) (k / 64) (k % 64) := by
+  rw [rate_bit _ k hk, show 8 * data.length / 1088 = data.length / 136 by omega]
+  have := absorb_main data (data.length / 136) 0 (Vector.replicate 25 0) (by omega) laneBits_zero
+  rw [Nat.mul_zero, List.drop_zero] at this
+  exact this (k / 64) (by omega) (k % 64) (Nat.mod_lt _ (by decide))
+
+/-- Keccak-256's digest, as the sponge's last state's: bit by bit. -/
+theorem keccak256_bits_multi_state (data : List UInt8) (k : ℕ) (hk : k < 256) :
+    bitOf (digestBytes (UniStatement.digestOfState (keccakState data))) k =
+      keccak256Bits (bitOf data) (8 * data.length) k :=
+  keccak256_bits_multi data k hk
+
 theorem spongeIs_spec {d : Array ℕ} {m : Array Bit} (h : c.spongeIs d m = true) :
     ∃ sp ∈ c.st.sponges, sp.digest = d ∧ sp.message = m := by
   unfold spongeIs at h
@@ -777,7 +869,7 @@ theorem inv_seed (hc : c.Checked r) (hw : c.circuit.Satisfied w) {id : ℕ} (hid
   split at hok
   · rename_i d hd
     simp only [Bool.and_eq_true, beq_iff_eq] at hok
-    obtain ⟨⟨hds, _⟩, hsp⟩ := hok
+    obtain ⟨⟨⟨hds, _⟩, hsp⟩, hrn⟩ := hok
     have hiv := (graphOk_parts hc.graph).2.2.2
     have hpc : c.publicCopy.size = 256 := by
       have := hc.bits; unfold bitsOk at this; simp only [Bool.and_eq_true, beq_iff_eq] at this; exact this.1.2
@@ -811,12 +903,13 @@ theorem inv_seed (hc : c.Checked r) (hw : c.circuit.Satisfied w) {id : ℕ} (hid
           rw [public_copy hc hw hk, show data = (NAME ++ r.iv) ++ c.pubW w from rfl,
             bitOf_append_right _ _ _ (by simp [NAME_length, hiv]; omega)]
           simp [NAME_length, hiv]
-    refine ⟨d, hd, hds, ?_, ?_⟩
+    refine ⟨⟨d, hd, hds, ?_, ?_⟩, fun rt hrt => ?_⟩
     · rw [valsW_step hc hid hl, hnode]
       simp [Graph.step, Value.toState, keccakSeed, PcsCircuit.digestBytes_length]
     · intro k hk
       rw [digest_of_message hc G hsp hsize hm k hk, valsW_step hc hid hl, hnode]
       rfl
+    · rw [hrt] at hrn; cases hrn
   · cases hok
 
 /-- A hashed stream bit, through its copy or not. -/
@@ -841,7 +934,7 @@ theorem inv_hash (hc : c.Checked r) (hw : c.circuit.Satisfied w) {id : ℕ} (hid
   · rename_i d hd
     simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, List.all_eq_true, List.mem_range] at hok
     obtain ⟨⟨⟨⟨⟨⟨hds, _⟩, _⟩, hft⟩, _⟩, hall⟩, hsp⟩ := hok
-    obtain ⟨ds, hds', hds256, hlen32, hbits⟩ := ih
+    obtain ⟨⟨ds, hds', hds256, hlen32, hbits⟩, _⟩ := ih
     have hsz := hc.sizes.2.2.2.1
     set state := ((c.valsW r w).getD s default).toState
     set S := c.streamW r w
@@ -889,12 +982,24 @@ theorem inv_hash (hc : c.Checked r) (hw : c.circuit.Satisfied w) {id : ℕ} (hid
         simp only [bitOf]
         rw [slice_getD _ _ _ _ (by omega), show (i - 8 * 32) / 8 = k / 8 by omega, show (i - 8 * 32) % 8 = k % 8 by omega]
         rfl
-    refine ⟨d, hd, hds, ?_, ?_⟩
+    obtain ⟨sp, hspm, hspd, hspm', hspo⟩ := spongeRateIs_spec hsp
+    obtain ⟨hdig, hosz, hl17, hout⟩ := Ctx.sponge_out G hc.keccak (hc.sponge sp hspm) (mb := bitOf data)
+      (by rw [hspm']; exact hm)
+    refine ⟨⟨d, hd, hds, ?_, ?_⟩, fun rt hrt => ?_⟩
     · rw [valsW_step hc hid hl, hnode]
       simp [Graph.step, Value.toState, PcsCircuit.digestBytes_length]
     · intro k hk
-      rw [digest_of_message hc G hsp hmsz hm k hk, valsW_step hc hid hl, hnode]
+      rw [← hspd, hdig k hk, hspm', hmsz, ← keccak256_bits_multi_state data k hk,
+        valsW_step hc hid hl, hnode]
       rfl
+    · have ho := hspo rt hrt
+      subst ho
+      refine ⟨by rw [hosz]; omega, ?_, fun k hk => ?_⟩
+      · rw [valsW_step hc hid hl, hnode]
+        exact rateBytesOf_length _
+      rw [hout k (by omega), hspm', hmsz, valsW_step hc hid hl, hnode]
+      simp only [Graph.step, Value.toRate]
+      rw [keccakState_rate_bits data k (by omega)]
   · cases hok
 
 /-! ## The induction -/
@@ -944,6 +1049,17 @@ theorem node_inv (hc : c.Checked r) (hw : c.circuit.Satisfied w) :
       have := IH h (by simp [hnode, Node.ops])
       unfold NodeInv at this; rw [if_pos hk] at this
       exact inv_narrow hc G hid hl hnode this
+    | wide h k =>
+      simp only [isStateNode]
+      have hk : isStateNode (c.nodes.getD h default) = true := by
+        simp only [nodeOk, hnode] at hokv
+        split at hokv
+        · simp only [Bool.and_eq_true] at hokv
+          exact isStateNode_of_isHash _ hokv.1.1.1.1.1.1
+        · cases hokv
+      have := IH h (by simp [hnode, Node.ops])
+      unfold NodeInv at this; rw [if_pos hk] at this
+      exact inv_wide hc G hid hl hnode this
     | bits v shift width => simp only [isStateNode]; exact inv_bits hc G hw hid hl hnode
     | add x y =>
       simp only [isStateNode]

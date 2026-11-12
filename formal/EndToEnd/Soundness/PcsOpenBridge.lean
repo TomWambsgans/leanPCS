@@ -1,18 +1,18 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- Follows `formal/EndToEnd/Completeness/E2ECompleteness/PcsOpening.lean` of this repository
+-- Follows `formal/EndToEnd/Completeness/E2ECompleteness/PcsOpening.lean` of this repository at `f96a7938`
 -- (`pcsOpeningWithH_eq_runProof`, `openingProgram_eq`, `runWithHash_bind`), there at a pure hash and
 -- permutation, here in any lawful monad, against `formal/WhirBridge/WhirBridge/PcsOracle.lean`'s
 -- `pcsVerifyWithHashO`. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`,
 -- commit 6175f1a0, MIT OR Apache-2.0): the runner `runWithHash`, `runProofWithHash`, `exists_ladder`.
 import Soundness.PcsDExp
-import E2ECompleteness.PcsOpening
+import Soundness.PcsVH
 import Bridge.Chain
 
 /-!
 # The Statement's opening check is F2's
 
 The Statement's opening check of a PCS claim, with Keccak-256 an explicit call (`pcsOpeningWithH`,
-`E2ECompleteness/PcsWithHash.lean`), is F2's verifier reading the out-of-domain point off Keccak-256
+`Soundness/PcsVH.lean`), is F2's verifier reading the out-of-domain point off Keccak-256
 (`WhirBridge.Pcs.pcsVerifyWithHashO`), in every lawful monad (**`pcsOpeningWithH_eq_O`**), so over the two
 oracles it is `pcsVerifierO`: the same calls in the same order. The two differ in form only:
 
@@ -78,8 +78,8 @@ theorem length_drop_digestBytes (d : Digest) : ((digestBytes d).drop 8).length =
 
 /-- **The out-of-domain point**, transcribed twice, in any monad. -/
 theorem oodPointWithH_eq {m : Type → Type} [Monad m] (H : Bytes → m Digest) (n : ℕ) (r : Digest) :
-    E2ECompleteness.Pcs.oodPointWithH H n r = WhirBridge.Pcs.oodPointM H n r := by
-  unfold E2ECompleteness.Pcs.oodPointWithH WhirBridge.Pcs.oodPointM
+    PcsKS.VH.oodPointWithH H n r = WhirBridge.Pcs.oodPointM H n r := by
+  unfold PcsKS.VH.oodPointWithH WhirBridge.Pcs.oodPointM
   congr 1
   funext j
   rw [oodInput_eq]
@@ -117,7 +117,7 @@ theorem prog_eq_commit {n : ℕ} (hw : Whir.Admissible n WhirBridge.logInvRate) 
 theorem dot_stack (lam : E) (z : List E) (c : Commitment) (claim : Claim) :
     dot (powers lam (pcsStackClaims z c claim).length) ((pcsStackClaims z c claim).map (·.2)) =
       c.ood + lam * claim.value :=
-  E2ECompleteness.Pcs.dot_powers_two lam _ _
+  PcsKS.VH.dot_powers_two lam _ _
 
 theorem dot_stack_fn (lam : E) (z : List E) (c : Commitment) (claim : Claim) :
     (fun point => dot (powers lam (pcsStackClaims z c claim).length)
@@ -125,7 +125,7 @@ theorem dot_stack_fn (lam : E) (z : List E) (c : Commitment) (claim : Claim) :
       fun pt => WhirBridge.eqZ z pt + lam * WhirBridge.eqZ claim.point pt := by
   funext pt
   rw [WhirBridge.eqZ_eq_eqEval, WhirBridge.eqZ_eq_eqEval]
-  exact E2ECompleteness.Pcs.dot_powers_two lam _ _
+  exact PcsKS.VH.dot_powers_two lam _ _
 
 /-- **F2's check is the Statement's stacked opening** of its two stack claims. -/
 theorem check_eq_vso (c : Commitment) (claim : Claim) {n : ℕ} (h : claim.point.length = n) (z : List E) :
@@ -144,16 +144,16 @@ theorem check_eq_vso (c : Commitment) (claim : Claim) {n : ℕ} (h : claim.point
 monad. -/
 theorem pcsOpeningWithH_eq_O (c : Commitment) (claim : Claim) {n : ℕ} (h : claim.point.length = n)
     (pf : Compile.Proof) :
-    E2ECompleteness.Pcs.pcsOpeningWithH H F c claim pf =
+    PcsKS.VH.pcsOpeningWithH H F c claim pf =
       WhirBridge.Pcs.pcsVerifyWithHashO H F (⟨c.root, c.ood, claim.point, claim.value, h⟩ :
         WhirBridge.Pcs.Claim1 n) pf := by
   subst h
-  unfold E2ECompleteness.Pcs.pcsOpeningWithH WhirBridge.Pcs.pcsVerifyWithHashO
+  unfold PcsKS.VH.pcsOpeningWithH WhirBridge.Pcs.pcsVerifyWithHashO
   by_cases hr : minVars ≤ claim.point.length ∧ claim.point.length ≤ maxVars
   · have hr' : WhirBridge.Pcs.minVars ≤ claim.point.length ∧
         claim.point.length ≤ WhirBridge.Pcs.maxVars := hr
     rw [ite_eq_left hr, ite_eq_left hr']
-    simp only [E2ECompleteness.Pcs.pcsSpongeWithH, bind_assoc, pure_bind,
+    simp only [PcsKS.VH.pcsSpongeWithH, bind_assoc, pure_bind,
       pcsClaimBytes_eq c claim rfl]
     refine bind_congr fun iv => ?_
     have hpd : zeroDigest = WhirBridge.publicDigest := rfl
@@ -167,9 +167,9 @@ theorem pcsOpeningWithH_eq_O (c : Commitment) (claim : Claim) {n : ℕ} (h : cla
       · rw [ite_eq_left hd, ite_eq_left hd, oodPointWithH_eq]
         refine bind_congr fun z => ?_
         rw [LeanVM.Protocol.Compile.runProofWithHash,
-          prog_eq_commit (E2ECompleteness.Pcs.admissible_of_vars hr)]
+          prog_eq_commit (PcsKS.VH.admissible_of_vars hr)]
         simp only [LeanVM.Protocol.Compile.runWithHash, hs, absorb_nil, absorb_one, pure_bind, hd]
-        rw [check_eq_vso c claim rfl z, E2ECompleteness.Pcs.runWithHash_bind, bind_assoc, List.nil_append]
+        rw [check_eq_vso c claim rfl z, PcsKS.VH.runWithHash_bind, bind_assoc, List.nil_append]
         refine bind_congr fun o => ?_
         rcases o with _ | ⟨a, s⟩
         · simp

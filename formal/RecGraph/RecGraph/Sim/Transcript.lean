@@ -246,7 +246,7 @@ theorem sim_sumcheckPairsDrawn (st : RecState) {claim : Nat} {c : E} (degree var
 def drawCh (fs : FsShape) (count : Nat) : Nat :=
   match fs with
   | .main => count
-  | .rec1 | .rec2 | .rec3 => if count = 0 then 0 else 1
+  | .rec1 | .rec2 | .rec3 | .rec4 => if count = 0 then 0 else 1
 
 theorem sim_drawRun_squares (st : RecState) (count : Nat) :
     Sim π iv publicInput stream st (if count = 0 then pure [] else do let c ← Pi1.sample; Pi1.squares c count)
@@ -270,6 +270,7 @@ theorem sim_drawRun (st : RecState) (fs : FsShape) (count : Nat) :
   | rec1 => exact (sim_drawRun_squares st count).mono fun _ _ _ _ _ h ↦ h.1
   | rec2 => exact (sim_drawRun_squares st count).mono fun _ _ _ _ _ h ↦ h.1
   | rec3 => exact (sim_drawRun_squares st count).mono fun _ _ _ _ _ h ↦ h.1
+  | rec4 => exact (sim_drawRun_squares st count).mono fun _ _ _ _ _ h ↦ h.1
 
 /-- `FsShape::Rec3`'s draw: one challenge, its squares, `count` of them. -/
 theorem sim_drawRun_rec3 (st : RecState) (count : Nat) :

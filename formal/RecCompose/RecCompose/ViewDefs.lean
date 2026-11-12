@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `viewOf` is transcribed from
 -- `crates/leanvm/rec/src/pi2/adapt.rs` (`adapt`, `expr`, `port_formula`, `public_counts`) and
--- `crates/leanvm/rec/src/pi2/circuit.rs` (`Coeff::ONE`, `Coeff::k`, `Coeff::e`, `Coeff::gamma`, `Lin::cell`), branch
--- `leanvm-rec` @ 2b22581; the validity check is `pi2::circuit::Circuit::validate` with `spec::Circuit::check_shape`, as
+-- `crates/leanvm/rec/src/pi2/circuit.rs` (`Coeff::ONE`, `Coeff::k`, `Coeff::e`, `Coeff::gamma`, `Lin::cell`), π2v4
+-- (main `7e6d353c`); the validity check is `pi2::circuit::Circuit::validate` with `spec::Circuit::check_shape`, as
 -- `RecPiop.Circuit.Valid` states them.
 import RecCircuit.Check
 import RecStatement.Data
@@ -21,11 +21,11 @@ links them:
 * **`callOf`**: a call word in the verifier's terms (a constant word its 32 bytes).
 * **`validB`**: `RecPiop.Circuit.Valid` of `toPiop`, decided by loops over the positions, the blocks and the ports
   (`RecCompose.Valid`: `validB_sound`).
-* **`viewCheck`**: the three, against `Data.circuit` and `Data.pi1Calls`; `Pi2ViewChecked` (`Facts.lean`) is it at
-  every 32-byte π1 IV, **checked by evaluation** on the compiler's circuit for the Keccak VM's π1-rec3
-  (`RecGraphKeccak.Emitted.graph`) at π1's reference IV `Data.pi1Iv` and at the zero IV (`rec-view-check`,
-  `RecComposeTest/ViewCheck.lean`: true at both, about 14 minutes an IV, nearly all of it the compile), and assumed at
-  the others.
+* **`viewCheck`**: the three, against `Data.circuit` and `Data.pi1Calls`, and the claims hashed `Data.hashed`;
+  `Pi2ViewChecked` (`Facts.lean`) is it at every π1 setup commitment and 32-byte π1 IV, **checked by evaluation** on
+  the compiler's circuit for the Keccak VM's π1-rec4 (`RecGraphKeccak.Emitted.graph`, `pi1GraphAt` of the reference
+  setup) at π1's reference IV `Data.pi1Iv` and at the zero IV (`rec-view-check`, `RecComposeTest/ViewCheck.lean`),
+  and assumed at the others.
 -/
 
 namespace RecCompose
@@ -105,18 +105,27 @@ def wordCounts (acc : ℕ × ℕ) : RecCircuit.CallWord → ℕ × ℕ
 def publicCounts (c : RecCircuit.Circuit) : ℕ × ℕ :=
   c.calls.flatten.foldl wordCounts (c.ports.toList.foldl (fun a p ↦ sourceCounts a p.source) (0, 0))
 
-/-- A port's public term's linear form: the statement `(S_0 + Y S_1) + γ (S_2 + Y S_3)`, a root `half 1 + γ half 0`,
-an element itself, a zero check or a padding port nothing. -/
-def termOf (roots : ℕ) : RecCircuit.Source → List (RecStatement.Coeff × ℕ)
+/-- A port's public term's linear form (`adapt`'s scalars: the statement's four words `0 .. 4`, then each hashed
+claim's frame word's four, then each root's two halves, then the elements): the statement `(S_0 + Y S_1) + γ (S_2 + Y
+S_3)`, a hashed claim's Keccak-256 likewise of its frame word's scalars, a root `half 1 + γ half 0`, an element itself,
+a zero check or a padding port nothing. -/
+def termOf (hashes roots : ℕ) : RecCircuit.Source → List (RecStatement.Coeff × ℕ)
   | .statement => [(oneC, 0), (yC, 1), (gC, 2), (gyC, 3)]
-  | .root i => [(oneC, 4 + 2 * i + 1), (gC, 4 + 2 * i)]
-  | .element i => [(oneC, 4 + 2 * roots + i)]
+  | .claimHash i => [(oneC, 4 + 4 * i), (yC, 4 + 4 * i + 1), (gC, 4 + 4 * i + 2), (gyC, 4 + 4 * i + 3)]
+  | .root i => [(oneC, 4 + 4 * hashes + 2 * i + 1), (gC, 4 + 4 * hashes + 2 * i)]
+  | .element i => [(oneC, 4 + 4 * hashes + 2 * roots + i)]
   | .zero | .pad => []
 
 /-- The public terms: port `j`'s at tag `N + j`. -/
 def publicTermsOf (c : RecCircuit.Circuit) : List RecStatement.PublicTerm :=
   (List.range c.ports.size).map fun j ↦
-    ⟨2 ^ c.logN + j, ⟨termOf (publicCounts c).1 (c.ports.getD j default).source, none⟩⟩
+    ⟨2 ^ c.logN + j, ⟨termOf c.hashed.length (publicCounts c).1 (c.ports.getD j default).source, none⟩⟩
+
+/-- The reads (`adapt`): the hashed claims' frame words (π1's claims are the frame's payloads `0, 1, …`), the roots,
+the elements (a narrow challenge's as its 20 bytes). -/
+def readsOf (c : RecCircuit.Circuit) : List RecStatement.Read :=
+  c.hashed.map (fun ci ↦ RecStatement.Read.frame ci) ++ List.replicate (publicCounts c).1 .root ++
+    (List.range (publicCounts c).2).map fun e ↦ if e ∈ c.narrow then .narrow else .scalar
 
 /-- The public terms' holes: port `j`'s position (which `σ` sends to the tag `N + j`). -/
 def holesOf (c : RecCircuit.Circuit) : List ℕ :=
@@ -124,9 +133,7 @@ def holesOf (c : RecCircuit.Circuit) : List ℕ :=
 
 /-- **`adapt`**: the Lean compiler's circuit as π2's verifier reads it, with each public term's hole. -/
 def viewOf (c : RecCircuit.Circuit) : RecStatement.Circuit :=
-  ⟨c.logN, c.logWidth, formulasOf c, pairsOf c,
-    List.replicate (publicCounts c).1 .root ++ List.replicate (publicCounts c).2 .scalar, publicTermsOf c,
-    holesOf c⟩
+  ⟨c.logN, c.logWidth, formulasOf c, pairsOf c, readsOf c, publicTermsOf c, holesOf c⟩
 
 /-- A call word in the verifier's terms: a constant word its 32 bytes. -/
 def callOf : RecCircuit.CallWord → RecStatement.CallWord
@@ -206,6 +213,6 @@ deriving instance DecidableEq for RecStatement.Circuit
 `Data.pi1Calls`, and it is valid. -/
 def viewCheck (c : RecCircuit.Compiled) : Bool :=
   decide (viewOf c.circuit = RecStatement.Data.circuit) && decide (callsOf c.circuit = RecStatement.Data.pi1Calls) &&
-    validB c.circuit
+    validB c.circuit && c.circuit.hashed == RecStatement.Data.hashed
 
 end RecCompose

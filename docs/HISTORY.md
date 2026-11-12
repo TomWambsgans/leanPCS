@@ -11,14 +11,14 @@ Gas is without the 21,000 base; "frame transaction" is EIP-8141 under EIP-7976's
 
 ## Membership
 
-| | hidden layouts | `f96a7938` (six claims; `formal/` proves it) | `866ba889` (four claims) | now (three claims) |
+| | hidden layouts | `f96a7938` (six claims; `formal/` proved it before the port) | `866ba889` (four claims) | now (three claims; `formal/` proves it) |
 |---|---|---|---|---|
 | commitments | 2 (`2^25`, `2^28`) + index | 4 (`W` `2^25`, `H` `2^27`, `Q` `2^28`, `G` `2^25`) + index | 2 (`W` `2^24`, `T` `2^28`) + index | 2 (`W` `2^24`, `T` `2^28`) + index |
 | claims | 4, in 3 declared (claims on a layout) | 6 | 4 (W, wiring, copy and sum on `T`) | 3 (W, wiring, copy on `T`) |
 | calldata | 253 B | 461 B (selector `0xde12c640`) | 301 B | 273 B (no selector) |
 | frame of PCS claims | | 193 B | 129 B | 97 B |
 | execution | 14,831 | 18,899 | 16,414 | 15,753 |
-| standard price | | 40,315 | 32,270 | 29,649 |
+| standard price | | 40,315 | 32,270 | 29,625 (29,649 before the slack words: the measured proof's zero bytes) |
 | transaction (EIP-8141, `pcs_gas` in the floor) | 30,400 (with `PCS_OPEN`) | 52,856 (`64 · (461 + 193) + 11,000`) | 36,520 | 31,680 |
 | code / deployment | | 6,667 B / 1,536,984 gas | 5,304 B / 1,242,838 gas | 4,866 B / 1,149,640 gas |
 | prover | 1.7–2.2 s (M4 Max) | 2.8 s M4 Max (reduction 1.71, openings 1.08), 8.6 GiB; 2.29 s on 8 threads (1.49, 0.79); 0.91 s on 64 | 1.23 s on 8 threads (0.60, 0.62), 6.0 GiB; 0.63 s on 64 | 1.01 s on 8 threads |
@@ -30,7 +30,7 @@ At `f96a7938`, checking the claims declared cost 61 gas once (the frame's mode a
 
 ### Membership at f96a7938
 
-The protocol `formal/` proves (formerly `docs/membership/EIP_CLAIMS.md`): the first fit to the EIP's claims, one
+The protocol `formal/` proved before the port (formerly `docs/membership/EIP_CLAIMS.md`): the first fit to the EIP's claims, one
 point a claim, each a plain point evaluation of the whole committed multilinear. `m = log_rows + 2` (24 at `2^22`
 rows):
 
@@ -70,7 +70,7 @@ claim on a conic binds three row values (−1,536), no selector (−256).
 
 ## leanVM
 
-| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` states it) | `866ba889` | `bbb0255c` (π2v3) | now (π2v4) |
+| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` stated it before the port) | `866ba889` | `bbb0255c` (π2v3) | now (π2v4; `formal/` states it) |
 |---|---:|---:|---:|---:|---:|
 | inner proof | π1-rec3 | π1-rec3 | π1-rec3 | π1-rec4 | π1-rec4 |
 | π1's claims | encoded by the contract | encoded by the contract (24-byte challenges, selector) | `C1`'s hashed in π2's circuit (20-byte challenges, no selector) | all three hashed | all three hashed |

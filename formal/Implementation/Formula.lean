@@ -6,7 +6,7 @@ import PcsQuotient.Reduction
 
 `PcsQuotient.claimsAt` (the Statement's transcription of `quotient::protocol::reduce` after its
 transcript reads) at `2^22` rows, its local definitions as top-level ones over the leaves (`Vals`:
-the statement, the challenges `α, β, γ, t, ρ`, the values `a`, `next`, `qValue`, `gValue`), so that the
+the statement, the challenges `α, β, μ, t, ρ`, the three values `X`, `C`, `V + Y`, `next`), so that the
 graph's nodes can be stated equal to them one by one. `claimsAt_eq`: `claimsAt` is these definitions,
 by unfolding (`rfl`).
 -/
@@ -22,87 +22,75 @@ structure Vals where
   stmt : Statement
   α : E
   β : E
-  γ : E
+  μ : E
   t : E
   ρ : E
-  a : Vector E 4
+  v : Vector E 3
   next : E
-  qValue : E
-  gValue : E
 
 variable (I : Vals)
 
 /-- `m = 24`. -/
 abbrev m : ℕ := cellVars logRows
 
-def w : List E := (List.range (m + 1)).foldl (fun ws _ ↦ ws ++ [ws.getLastD I.t * ws.getLastD I.t +
-    ws.getLastD I.t]) [I.t]
+def w : List E := digitsOf I.t m
 
 def wAt (k : ℕ) : E := (w I).getD k 0
 
-def cell (shift : K) (second : Bool) : E :=
-  let first := I.t + ofK shift
-  let second := if second then wAt I 1 + 1 else wAt I 1
-  I.a[0] + first * I.a[1] + second * (I.a[2] + first * I.a[3])
-
-def x : E := cell I 0 false
-def y : E := cell I 1 false
-def c : E := cell I (betaAt 1) true
-def v : E := cell I (betaAt 1 + 1) true
-def gate : E := v I + x I + c I + y I * c I
-
-def gammas : List E := [I.γ, I.γ * I.γ, (I.γ * I.γ) * (I.γ * I.γ)]
-
-def outside : E := (List.range' region (m - region)).foldl (fun acc k ↦ acc * (1 + wAt I k)) 1
-
-def coordinate (k : ℕ) : E :=
-  (List.range' (k + 1) (region - (k + 1))).foldl
-    (fun s j ↦ s + ofK ((coordinates region).getD (j - k) 0) * wAt I j) (wAt I k)
-
-def slope (k : ℕ) : E :=
-  match coordinateWeight k with
-  | some weight => 1 + weight
-  | none => 1 + (gammas I).getD (k - 8) 0
-
-def publicWeight : E :=
-  (List.range region).foldl (fun acc k ↦ acc * (1 + coordinate I k * slope I k)) (outside I)
-
-def target : E := (statementWords I.stmt).foldr (fun word acc ↦ word + I.γ * acc) 0
+def x : E := I.v[0]
+def c : E := I.v[1]
+def vy : E := I.v[2]
+def gate : E := vy I + c I + x I * c I
 
 def rows : E := (List.range (m - 1)).foldl (fun acc k ↦ acc + ofK ((rowVanishing m).getD k 0) * wAt I k) 0
 
 def d : E := I.α + x I + I.β * I.t
 def dNext : E := I.α + x I + I.β * I.next
 def product : E := d I * dNext I
-def copies : E := d I + dNext I + publicWeight I * x I * product I
+def z : E := wAt I m
+def zeta : E := z I * I.t
+def conicA : E := (witnessConic I.t (wAt I 1) I.ρ).1
+def conicB : E := (witnessConic I.t (wAt I 1) I.ρ).2
 
-def denominators : List E := (w I).map (1 + ·) ++ [product I + wAt I m, rows I, product I, 1 + I.ρ]
+def denominators : List E :=
+  (List.range m).map (fun k ↦ 1 + wAt I k) ++ [1 + zeta I, zeta I + product I, rows I] ++
+    pinPoints.map (fun p ↦ I.t + ofK p) ++ [conicA I + conicB I]
 
 def inv (k : ℕ) : E := ((denominators I).getD k 1)⁻¹
-def u : List E := (List.range (m + 2)).map fun k ↦ wAt I k * inv I k
+def u : List E := (List.range m).map (fun k ↦ wAt I k * inv I k) ++ [zeta I * inv I m]
+def copyInverse : E := inv I (m + 1)
+def rowsInverse : E := inv I (m + 2)
+def pinInverse (k : ℕ) : E := inv I (m + 3 + k)
+def conicInverse : E := inv I (m + 3 + publicRows)
 def middle : E := (List.range' 3 (m - 3)).foldl (fun acc k ↦ acc * inv I k) (inv I 2)
 def wiringScale : E := middle I * inv I 0 * inv I 1
-def quotientScale : E := wiringScale I * inv I m * inv I (m + 1)
-def rho2 : E := I.ρ * I.ρ
-def opened : E := (1 + rho2 I) * (I.a[0] + I.ρ * (I.a[0] + I.a[1])) + rho2 I * (I.a[2] + I.ρ * (I.a[2] + I.a[3]))
-def identities : E := (1 + I.ρ) * copies I * rows I + I.ρ * product I * gate I
-def quotientPoint : List E := u I ++ [wAt I m * inv I (m + 2), I.ρ, extension.1.1, extension.1.2]
-def quotientValue : E := extension.2 * quotientScale I * inv I (m + 2) * inv I (m + 3) * identities I
-def parts : (List E × E) × (List E × E) × (List E × E) := quotientParts (quotientPoint I) m
-def hInverse : E := (1 + wAt I (m + 1)) * (product I + wAt I m) * inv I (m + 4) * inv I (m + 5)
-def hValue : E := (quotientValue I + (parts I).2.1.2 * I.qValue + (parts I).2.2.2 * I.gValue) * hInverse I
+def tableScale : E := wiringScale I * inv I m
 
-/-- **The six claims** at the leaves. -/
+/-- The pins' fold's step. -/
+def pinStep (acc : E) (k : ℕ) : E :=
+  if k < publicWords then acc + ofK (I.stmt.words.getD k 0) * ofK (pinWeights.getD k 0) * pinInverse I k
+  else if anchorValues I.stmt.words k = 0 then acc
+  else acc + ofK (pinWeights.getD k 0 * anchorValues I.stmt.words k) * pinInverse I k
+
+def pinned : E :=
+  (List.range publicRows).foldl (pinStep I)
+    (x I * (List.range publicRows).foldl (fun acc k ↦ acc * pinInverse I k) 1)
+
+def g : E := gate I * rowsInverse I + pinned I
+def kappa : E := product I * copyInverse I
+def copyValue : E := extension.2 * tableScale I * I.t * (d I + dNext I + I.μ * z I * g I) * copyInverse I
+def z1 : E := conicA I * conicInverse I
+def lam : Vector E 3 := witnessWeights I.t (wAt I 1) I.ρ (z1 I)
+def opened : E := (lam I)[0] * x I + (lam I)[1] * c I + (lam I)[2] * vy I
+
+/-- **The three claims** at the leaves. -/
 def claims : Claims :=
-  { witness := ⟨[I.ρ, rho2 I] ++ ((u I).drop 2).take (m - 1), opened I * middle I * inv I m⟩
+  { witness := ⟨[I.ρ, z1 I] ++ ((u I).drop 2).take (m - 2), opened I * middle I⟩
     wiring := ⟨(u I).take m, I.next * wiringScale I⟩
-    h := ⟨(parts I).1.1, hValue I⟩
-    q := ⟨(parts I).2.1.1, I.qValue⟩
-    g := ⟨(parts I).2.2.1, I.gValue⟩
-    sum := ⟨sumPoint logRows, extension.2 * target I⟩ }
+    copy := ⟨copyPoint (u I) (kappa I), copyValue I⟩ }
 
 /-- **`claimsAt` is these definitions.** -/
-theorem claimsAt_eq : claimsAt logRows I.stmt I.α I.β I.γ I.t I.ρ I.a I.next I.qValue I.gValue =
+theorem claimsAt_eq : claimsAt logRows I.stmt I.α I.β I.μ I.t I.ρ I.v I.next =
     if (denominators I).any (· = 0) then none else some (claims I) := rfl
 
 end Implementation.Formula

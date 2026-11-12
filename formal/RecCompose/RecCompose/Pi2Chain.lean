@@ -4,31 +4,25 @@
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls
 -- `KeccakCalls`, their lazy random oracles, `rpmError`, `DuplexVm`, `hashBlocks`, `Common.QueryCostAtMost.of_bind`.
 import RecCompose.Pi2P1
+import RecCompose.Pi2Prob
 import Common.Rerun
+import UniKeccakComplete.K.ProbTFresh
 
 /-!
 # π2's chain `α, β, γ` when stage A hashes `32`-byte inputs
 
-**The finding.** `Pi2Staged.Holds.hashA` asks stage A (π2's experiment up to `α`'s query) to hash nothing of `32`
-(or `608`) bytes (`HashOK (GoodL 608)`), and `Pi2ProbStaged`'s named `Pi2HashBeforeAlpha` states it of `pi2Staged`.
-**It need not hold**: stage A runs π1-rec3's prover (`P1k`), which may hash `32`-byte inputs (a challenge chained on
-the last answer, `s₂ = H(s₁)` on `s₁`'s `32` bytes). So `α`'s chain is restated here without it:
+Stage A (π2's experiment up to `α`'s query) runs π1-rec4's prover (`P1k`), which may hash `32`-byte inputs (a
+challenge chained on the last answer). So `α`'s chain is bounded here by counting stage A's hashed inputs instead of
+asking it to hash nothing of `32` bytes:
 
 * **`prEvent_staged3_triple_le2`**: for a computation of the chain's shape (`staged3`) whose stage A makes at most
   `KA` Keccak-256 queries (`HC`), from a cache of at most `K₀` hashed inputs, the first input of length `L ≠ 32`, if
   `α`'s input is already cached after A with probability at most `εα`, the triple lands in a bad set of at most
-  `M · |E|²` with probability at most `εα + (2K + 1) / 2^256 + M / 2^192`, `K = K₀ + KA`: `s₂`'s input (`s₁`'s
-  bytes) is cached only if one of the `K` cached inputs is `s₁`'s bytes, `s₃`'s only if `s₂ = s₁` or one is `s₂`'s
-  (at `K = 0` and `εα = 0`, `prEvent_staged3_triple_le`'s `1 / 2^256 + M / 2^192`).
-* **`Pi2Staged.Holds2`**: `Holds` with `hashA` replaced by **`alphaFresh`** (`α`'s input cached after A from the
-  empty cache with probability at most `εα`); every other field is `Holds`' (`experiment`, `duplex`, `cost`, `L_ne`,
-  `inp_length`, `badCard`, `badTCard`, `tFresh`, `rejectGood`). `Holds.toHolds2` (at `εα = 0`, through
-  `HashOK (GoodL L)`).
-* **`recCompleteness2_of_staged2`**: `RecCompleteness2 D P1 P2 (deltaStaged2 M ct N εα εt εpow)`,
-  `deltaStaged2 = (εα + (2N + 1) / 2^256 + M / 2^192) + (εt + ct / 2^192) + εpow + rpmError N` (stage A's hashed
-  inputs bounded by the run's `N` block calls, `hc_of_qc`).
-* **`delta2'`**, **`delta2'_le`**: π2's numbers (`M = 2^25 + 36`, `ct = 9 · 2^24`); below `2^-164` at `N ≤ 2^50`,
-  `εα, εt ≤ 2^-200`, `εpow ≤ 2^-300`.
+  `M · |E|²` with probability at most `εα + (2K + 1) / 2^256 + M / 2^192`, `K = K₀ + KA`.
+* **`deltaStaged2 M ct N εα εt ερ εpow = (εα + (2N + 1) / 2^256 + M / 2^192) + (εt + ct / 2^192) + ερ + εpow +
+  rpmError N`**: the error `Pi2Holds3.recCompleteness2_of_staged3` gives (`ερ` `ρ`'s bad event, π2v4).
+* **`delta2'`**, **`delta2'_le`**: π2v4's numbers (`M = 2^25`: the copy argument's `2N`; `ct = 10 · 2^24 + 1`: `t`'s);
+  below `2^-164` at `N ≤ 2^50`, `εα, εt, ερ ≤ 2^-170`, `εpow ≤ 2^-300`.
 -/
 
 open OracleComp OracleSpec
@@ -147,59 +141,13 @@ theorem prEvent_staged3_triple_le2 {α ρ γ : Type} (chal : Digest → E) (hreg
     exact not_not.mp hs.2
   exact prEvent_final_le _ (pr p.1, chal s₁, chal s₂, chal s₃) (fun v ↦ v.2 ∈ Bad v.1)
 
-/-! ## The staged experiment, `α`'s input fresh but with probability `εα` -/
+/-! ## The staged experiment's error -/
 
-/-- **The code-level bridge without `hashA`**: `Pi2Staged.Holds`' fields but `hashA`, replaced by `alphaFresh`
-(`α`'s input already hashed after stage A with probability at most `εα`). -/
-structure Pi2Staged.Holds2 (S : Pi2Staged) (D : RecStatement.RecDeployment) (P1 : RecStatement.Pi1Prover D)
-    (P2 : RecStatement.Pi2Prover) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
-    (L : ℕ) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop) (M ct N : ℕ) (εα εt εpow : ℝ≥0∞) : Prop where
-  /-- (as `Holds`) The experiment's event is at most the two-call run's against the random permutation. -/
-  experiment : Pr{let v ← RecStatement.recCompletenessExperiment2 D P1 P2 input rows q}[v.1 = true ∧ v.2 = false] ≤
-    Pr{let z ← (simulateQ keccakCallsOverRandomPermutation S.run).run' []}[z.1.1.1 = true ∧ z.1.1.2 = false]
-  /-- (as `Holds`) The duplex discipline. -/
-  duplex : DuplexVm S.run []
-  /-- (as `Holds`) At most `N` block calls. -/
-  cost : Common.QueryCostAtMost S.run hashBlocks N
-  /-- (as `Holds`) `α`'s input has `L ≠ 32` bytes. -/
-  L_ne : L ≠ 32
-  inp_length : ∀ a, (S.inp a).length = L
-  /-- **New** (replaces `hashA`): `α`'s input is already hashed after stage A with probability at most `εα`. -/
-  alphaFresh : Pr{let p ← (simulateQ ro S.A).run ∅}[p.2 (.inl (S.inp p.1)) ≠ none] ≤ εα
-  /-- (as `Holds`) The copy argument's bad triples' count. -/
-  badCard : ∀ p, (Bad p).card ≤ M * 2 ^ 384
-  /-- (as `Holds`) At most `ct` bad values of `t` for each prior. -/
-  badTCard : ∀ fp, ∃ T : Finset E, T.card ≤ ct ∧ ∀ t, badT fp t → t ∈ T
-  /-- (as `Holds`) `t`'s input is already hashed before its query with probability at most `εt`. -/
-  tFresh : Pr{let p ← (simulateQ ro S.pre).run ∅}[p.2 (.inl (S.tin p.1.1)) ≠ none] ≤ εt
-  /-- (as `Holds`) The grinding. -/
-  rejectGood : Pr{let z ← (simulateQ ro S.run).run' ∅}[
-    z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ Bad z.2.1 ∧ ¬ badT z.1.2.1 z.1.2.2] ≤ εpow
-
-/-- **`Holds` gives `Holds2` at `εα = 0`** (`α`'s input fresh by its length). -/
-theorem Pi2Staged.Holds.toHolds2 {S : Pi2Staged} {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
-    {P2 : RecStatement.Pi2Prover} {input : Vector UInt8 32} {rows : List ℕ} {q : D.pi1.Stack rows} {L : ℕ}
-    {Bad : S.ρ → Finset (E × E × E)} {badT : S.τ → E → Prop} {M ct N : ℕ} {εt εpow : ℝ≥0∞}
-    (h : S.Holds D P1 P2 input rows q L Bad badT M ct N εt εpow) :
-    S.Holds2 D P1 P2 input rows q L Bad badT M ct N 0 εt εpow where
-  experiment := h.experiment
-  duplex := h.duplex
-  cost := h.cost
-  L_ne := h.L_ne
-  inp_length := h.inp_length
-  alphaFresh := by
-    refine le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ fun p hp hc ↦ ?_)
-    rcases cache_of_hashOK h.hashA ∅ hp _ hc with h' | h'
-    · exact h' rfl
-    · exact h'.2 (h.inp_length p.1)
-  badCard := h.badCard
-  badTCard := h.badTCard
-  tFresh := h.tFresh
-  rejectGood := h.rejectGood
-
-/-- π2's completeness error from the staged experiment's numbers, `α`'s input fresh but with probability `εα`. -/
-noncomputable def deltaStaged2 (M ct N : ℕ) (εα εt εpow : ℝ≥0∞) : ℝ≥0∞ :=
-  (εα + (((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 + (M : ℝ≥0∞) / 2 ^ 192)) + (εt + (ct : ℝ≥0∞) / 2 ^ 192) + εpow +
+/-- **π2's completeness error from the staged experiment's numbers** (π2v4): `α, β, γ` (`α`'s input fresh but with
+probability `εα`, stage A's `N` hashed inputs, `M |E|²` bad triples), `t` (its input fresh but with probability `εt`,
+`ct` bad values), `ρ` (`ερ`), the grinding `εpow`, the permutation's `rpmError N`. -/
+noncomputable def deltaStaged2 (M ct N : ℕ) (εα εt ερ εpow : ℝ≥0∞) : ℝ≥0∞ :=
+  (εα + (((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 + (M : ℝ≥0∞) / 2 ^ 192)) + (εt + (ct : ℝ≥0∞) / 2 ^ 192) + ερ + εpow +
     rpmError N
 
 /-- **Stage A's Keccak-256 queries**: at most the run's block calls. -/
@@ -207,71 +155,20 @@ theorem Pi2Staged.hc_A (S : Pi2Staged) {N : ℕ} (h : Common.QueryCostAtMost S.r
   unfold Pi2Staged.run staged3 at h
   exact hc_of_qc (Common.QueryCostAtMost.of_bind h)
 
-/-- **One statement**, `Holds2`'s: the graph accepting and the contract rejecting has probability at most
-`deltaStaged2`. -/
-theorem prEvent_staged_bad_le2 (S : Pi2Staged) {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
-    {P2 : RecStatement.Pi2Prover} {input : Vector UInt8 32} {rows : List ℕ} {q : D.pi1.Stack rows} {L : ℕ}
-    {Bad : S.ρ → Finset (E × E × E)} {badT : S.τ → E → Prop} {M ct N : ℕ} {εα εt εpow : ℝ≥0∞}
-    (h : S.Holds2 D P1 P2 input rows q L Bad badT M ct N εα εt εpow) :
-    Pr{let z ← (simulateQ keccakCallsOverRandomPermutation S.run).run' []}[z.1.1.1 = true ∧ z.1.1.2 = false] ≤
-      deltaStaged2 M ct N εα εt εpow := by
-  refine E2ECompleteness.rpm_le_rom S.run h.duplex h.cost (fun z ↦ z.1.1.1 = true ∧ z.1.1.2 = false) ?_
-  have hab : Pr{let z ← (simulateQ ro S.run).run' ∅}[z.2.2 ∈ Bad z.2.1] ≤
-      εα + (((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 + (M : ℝ≥0∞) / 2 ^ 192) := by
-    rw [StateT.run'_eq, prEvent_map]
-    have := prEvent_staged3_triple_le2 chalP E2ECompleteness.challengeOf_regular h.L_ne Bad M h.badCard S.inp
-      h.inp_length S.pr S.A S.tail (S.hc_A h.cost) ∅ cacheBound_empty εα h.alphaFresh
-    rw [zero_add] at this
-    exact this
-  have ht : Pr{let z ← (simulateQ ro S.run).run' ∅}[badT z.1.2.1 z.1.2.2] ≤ εt + (ct : ℝ≥0∞) / 2 ^ 192 := by
-    rw [StateT.run'_eq, prEvent_map, S.run_eq_pre]
-    refine (prEvent_tquery_le' chalP E2ECompleteness.challengeOf_regular badT ct h.badTCard S.pre
-      (fun x ↦ S.tin x.1) (fun x ↦ S.prT x.1) (fun x st ↦ S.C x.1 st)
-      (fun x st z ↦ ((z, (S.prT x.1, chalP st)), x.2)) (fun w ↦ badT w.1.2.1 w.1.2.2) (fun _ _ _ hw ↦ hw)
-      ∅).trans ?_
-    exact add_le_add h.tFresh le_rfl
-  have hsplit : Pr{let z ← (simulateQ ro S.run).run' ∅}[z.1.1.1 = true ∧ z.1.1.2 = false] ≤
-      Pr{let z ← (simulateQ ro S.run).run' ∅}[z.2.2 ∈ Bad z.2.1] +
-        (Pr{let z ← (simulateQ ro S.run).run' ∅}[badT z.1.2.1 z.1.2.2] +
-          Pr{let z ← (simulateQ ro S.run).run' ∅}[
-            z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ Bad z.2.1 ∧ ¬ badT z.1.2.1 z.1.2.2]) := by
-    refine (prEvent_le_prEvent_add_prEvent_and_not _ _
-      (fun z : ((Bool × Bool) × (S.τ × E)) × (S.ρ × E × E × E) ↦ z.2.2 ∈ Bad z.2.1)).trans
-        (add_le_add le_rfl ?_)
-    refine (prEvent_le_prEvent_add_prEvent_and_not _ _
-      (fun z : ((Bool × Bool) × (S.τ × E)) × (S.ρ × E × E × E) ↦ badT z.1.2.1 z.1.2.2)).trans
-        (add_le_add le_rfl (le_of_eq ?_))
-    simp only [and_assoc]
-  refine hsplit.trans ?_
-  calc _ ≤ (εα + (((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 + (M : ℝ≥0∞) / 2 ^ 192)) +
-        ((εt + (ct : ℝ≥0∞) / 2 ^ 192) + εpow) := add_le_add hab (add_le_add ht h.rejectGood)
-    _ = _ := by ac_rfl
-
-/-- **`RecCompleteness2` from `Holds2`.** -/
-theorem recCompleteness2_of_staged2 {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
-    {P2 : RecStatement.Pi2Prover} {L M ct N : ℕ} {εα εt εpow : ℝ≥0∞}
-    (hS : ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-      D.pi1.HonestRelation D.flock rows input q →
-      ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
-        S.Holds2 D P1 P2 input rows q L Bad badT M ct N εα εt εpow) :
-    RecStatement.RecCompleteness2 D P1 P2 (deltaStaged2 M ct N εα εt εpow) := by
-  intro input rows q hfit hrel
-  obtain ⟨S, Bad, badT, h⟩ := hS input rows q hfit hrel
-  exact h.experiment.trans (prEvent_staged_bad_le2 S h)
-
 /-! ## π2's numbers -/
 
-/-- **π2's completeness error**, `α`'s input fresh but with probability `εα`: the copy argument's `(2^25 + 36) |E|²`
-bad triples, `t`'s `9 · 2^24`. -/
-noncomputable def delta2' (N : ℕ) (εα εt εpow : ℝ≥0∞) : ℝ≥0∞ := deltaStaged2 (2 ^ 25 + 36) (9 * 2 ^ 24) N εα εt εpow
+/-- **π2's completeness error** (π2v4), `α`'s input fresh but with probability `εα`: the copy argument's `2^25 |E|²`
+bad triples (`2N`), `t`'s `10 · 2^24 + 1` bad points (`10N + 1`), `ρ`'s error `ερ`. -/
+noncomputable def delta2' (N : ℕ) (εα εt ερ εpow : ℝ≥0∞) : ℝ≥0∞ :=
+  deltaStaged2 (2 ^ 25) (10 * 2 ^ 24 + 1) N εα εt ερ εpow
 
-/-- **`δ2` in bits**: below `2^-164` at `N ≤ 2^50`, `εα, εt ≤ 2^-200`, `εpow ≤ 2^-300`. -/
-theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : εα ≤ (2 : ℝ≥0∞)⁻¹ ^ 200)
-    (ht : εt ≤ (2 : ℝ≥0∞)⁻¹ ^ 200) (hp : εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 300) :
-    delta2' N εα εt εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 164 := by
+/-- **`δ2` in bits**: below `2^-164` at `N ≤ 2^50`, `εα, εt, ερ ≤ 2^-170`, `εpow ≤ 2^-300` (`t`'s `10 · 2^-168` and
+the copy argument's `2^-167` dominate: about `2^-164.4`). -/
+theorem delta2'_le {N : ℕ} {εα εt ερ εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : εα ≤ (2 : ℝ≥0∞)⁻¹ ^ 170)
+    (ht : εt ≤ (2 : ℝ≥0∞)⁻¹ ^ 170) (hr : ερ ≤ (2 : ℝ≥0∞)⁻¹ ^ 170) (hp : εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 300) :
+    delta2' N εα εt ερ εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 164 := by
   set x : ℝ≥0∞ := (2 : ℝ≥0∞)⁻¹ ^ 170 with hx
   have hsmall : ∀ k, 170 ≤ k → (2 : ℝ≥0∞)⁻¹ ^ k ≤ x := fun k hk ↦ E2ECompleteness.inv_pow_le_inv_pow hk
-  have h0 : εα ≤ x := ha.trans (hsmall 200 (by norm_num))
   have ha' : ((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 ≤ x := by
     calc ((2 * N + 1 : ℕ) : ℝ≥0∞) / 2 ^ 256 ≤ ((2 ^ 52 : ℕ) : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ (204 + 52) := by
           rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
@@ -281,23 +178,21 @@ theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (
           rw [Nat.cast_pow, Nat.cast_ofNat]
           exact E2ECompleteness.two_pow_mul_inv_pow 52 204
       _ ≤ x := hsmall 204 (by norm_num)
-  have hb : ((2 ^ 25 + 36 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 2 ^ 4 * x := by
-    calc ((2 ^ 25 + 36 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 2 ^ 26 * (2 : ℝ≥0∞)⁻¹ ^ (166 + 26) := by
-          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
-          gcongr
-          norm_num
-      _ = (2 : ℝ≥0∞)⁻¹ ^ 166 := E2ECompleteness.two_pow_mul_inv_pow 26 166
-      _ = 2 ^ 4 * x := (E2ECompleteness.two_pow_mul_inv_pow 4 166).symm
-  have hc : ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 36 * x := by
+  have hb : ((2 ^ 25 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 2 ^ 3 * x := by
     refine le_of_eq ?_
-    calc ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 9 * (2 ^ 24 * (2 : ℝ≥0∞)⁻¹ ^ (168 + 24)) := by
+    calc ((2 ^ 25 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 2 ^ 25 * (2 : ℝ≥0∞)⁻¹ ^ (167 + 25) := by
+          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
+          norm_num
+      _ = (2 : ℝ≥0∞)⁻¹ ^ 167 := E2ECompleteness.two_pow_mul_inv_pow 25 167
+      _ = 2 ^ 3 * x := (E2ECompleteness.two_pow_mul_inv_pow 3 167).symm
+  have hc : ((10 * 2 ^ 24 + 1 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 41 * x := by
+    calc ((10 * 2 ^ 24 + 1 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ ((41 * 2 ^ 22 : ℕ) : ℝ≥0∞) / 2 ^ 192 :=
+          ENNReal.div_le_div_right (Nat.cast_le.mpr (by norm_num)) _
+      _ = 41 * (2 ^ 22 * (2 : ℝ≥0∞)⁻¹ ^ (170 + 22)) := by
           rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow]
           push_cast
           ring
-      _ = 9 * (2 : ℝ≥0∞)⁻¹ ^ 168 := by rw [E2ECompleteness.two_pow_mul_inv_pow 24 168]
-      _ = 9 * (2 ^ 2 * x) := by rw [hx, E2ECompleteness.two_pow_mul_inv_pow 2 168]
-      _ = 36 * x := by ring
-  have hd : εt ≤ x := ht.trans (hsmall 200 (by norm_num))
+      _ = 41 * x := by rw [E2ECompleteness.two_pow_mul_inv_pow 22 170]
   have he : εpow ≤ x := hp.trans (hsmall 300 (by norm_num))
   have hf : rpmError N ≤ x := by
     calc rpmError N ≤ rpmError (2 ^ 50) := by
@@ -308,9 +203,10 @@ theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (
       _ = (2 : ℝ≥0∞)⁻¹ ^ 408 := E2ECompleteness.two_pow_mul_inv_pow _ 408
       _ ≤ x := hsmall 408 (by norm_num)
   unfold delta2' deltaStaged2
-  calc _ ≤ (x + (x + 2 ^ 4 * x)) + (x + 36 * x) + x + x :=
-        add_le_add (add_le_add (add_le_add (add_le_add h0 (add_le_add ha' hb)) (add_le_add hd hc)) he) hf
-    _ = 57 * x := by ring
+  calc _ ≤ (x + (x + 2 ^ 3 * x)) + (x + 41 * x) + x + x + x :=
+        add_le_add (add_le_add (add_le_add (add_le_add (add_le_add ha (add_le_add ha' hb)) (add_le_add ht hc)) hr)
+          he) hf
+    _ = 55 * x := by ring
     _ ≤ 2 ^ 6 * x := by gcongr; norm_num
     _ = (2 : ℝ≥0∞)⁻¹ ^ 164 := by rw [hx]; exact E2ECompleteness.two_pow_mul_inv_pow 6 164
 
@@ -319,14 +215,6 @@ end RecCompose.Pi2P
 /-- info: 'RecCompose.Pi2P.prEvent_staged3_triple_le2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi2P.prEvent_staged3_triple_le2
-
-/-- info: 'RecCompose.Pi2P.Pi2Staged.Holds.toHolds2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2P.Pi2Staged.Holds.toHolds2
-
-/-- info: 'RecCompose.Pi2P.recCompleteness2_of_staged2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2P.recCompleteness2_of_staged2
 
 /-- info: 'RecCompose.Pi2P.delta2'_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

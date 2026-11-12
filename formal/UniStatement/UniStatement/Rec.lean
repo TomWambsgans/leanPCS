@@ -43,12 +43,21 @@ inductive FsShape where
   | rec2
   /-- π1-rec3: `rec2` with the batching sumcheck two variables a round. -/
   | rec3
+  /-- π1-rec4 (`docs/leanvm/univariate/SPEC.md` §14.4): `rec3` with the challenges no message separates drawn from
+  one Keccak-f (`sampleWide`), the ring switch's map drawn after `C2`'s commitment. Its verifier is
+  `UniKeccak.reduceWithK4`. -/
+  | rec4
   deriving DecidableEq, Repr, Inhabited
 
-/-- Whether the batch's challenges are narrow (`.rec2`, `.rec3`). -/
+/-- Whether the batch's challenges are narrow (`.rec2`, `.rec3`, `.rec4`). -/
 def FsShape.narrow : FsShape → Bool
-  | .rec2 | .rec3 => true
+  | .rec2 | .rec3 | .rec4 => true
   | .main | .rec1 => false
+
+/-- **`FsShape::wide`**: the challenges no message separates come from one wide draw (`sampleWide`; π1-rec4). -/
+def FsShape.wide : FsShape → Bool
+  | .rec4 => true
+  | .main | .rec1 | .rec2 | .rec3 => false
 
 /-- **`NARROW_BITS`**: a narrow challenge's bits, its top limb's low 32. -/
 def narrowBits : ℕ := 160
@@ -73,6 +82,66 @@ def pairPoint (z : E) : List E :=
   let y1 := z * z + z
   [z + cantorBeta1 * y1, y1]
 
+/-! ### The wide draw (`transcript::{keccak256_rate, challenge_at, wide_draw}`, π1-rec4) -/
+
+/-- **`WIDE_MAX`**: the most challenges one wide draw gives, five of 24 bytes in the rate's bytes `8 .. 128`. -/
+def wideMax : ℕ := 5
+
+/-- Keccak-256's digest of its last state: the first four lanes (`keccak256With`'s). -/
+def digestOfState (st : KeccakState) : Digest :=
+  #v[Keccak.lane st 0, Keccak.lane st 1, Keccak.lane st 2, Keccak.lane st 3]
+
+/-- **The sponge's rate** after Keccak-256's last permutation (`keccak256_rate`): lanes `0 … 16`, little-endian, 136
+bytes; its first 32 are the digest's (`take_rateBytesOf`). -/
+def rateBytesOf (st : KeccakState) : List UInt8 := (List.range 17).flatMap fun i ↦ wordBytes (Keccak.lane st i)
+
+/-- **`challenge_at(out, k)`**: challenge `k` of a wide draw's rate `out`, its bytes `8 + 24k .. 32 + 24k` read as
+`challengeOf` reads a digest's `8 .. 32` (limb `i` the big-endian bytes `24k + 24 − 8i …`): lanes `1 + 3k … 3 + 3k`. -/
+def challengeAt (out : List UInt8) (k : ℕ) : E :=
+  E.ofLimbs (K.ofLane (PcsQuotient.Transcript.beWord out (24 * k + 24)))
+    (K.ofLane (PcsQuotient.Transcript.beWord out (24 * k + 16)))
+    (K.ofLane (PcsQuotient.Transcript.beWord out (24 * k + 8)))
+
+section With
+
+variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
+
+/-- **Keccak-256's last state** over `F` (the sponge after its last permutation): `keccak256With` reads its digest
+(`keccak256With_eq`), `keccak256_rate` its rate. -/
+def keccak256StateWith (data : List UInt8) : m KeccakState :=
+  absorbWith F (data.length / rate) (Vector.replicate 25 0) data
+
+theorem keccak256With_eq [LawfulMonad m] (data : List UInt8) :
+    keccak256With F data = digestOfState <$> keccak256StateWith F data := by
+  rw [map_eq_bind_pure_comp]
+  rfl
+
+end With
+
+/-- The rate's bytes past the digest: lanes `4 … 16`. -/
+def rateTailOf (st : KeccakState) : List UInt8 := (List.range' 4 13).flatMap fun i ↦ wordBytes (Keccak.lane st i)
+
+theorem digestBytes_length_eq (d : Digest) : (digestBytes d).length = 32 := by
+  obtain ⟨⟨l⟩, hl⟩ := d
+  match l, hl with
+  | [_, _, _, _], _ => simp [digestBytes, wordBytes]
+
+/-- **The rate starts with the digest** (`keccak256_rate`'s first 32 bytes are `keccak256`'s). -/
+theorem rateBytesOf_eq (st : KeccakState) : rateBytesOf st = digestBytes (digestOfState st) ++ rateTailOf st := by
+  simp [rateBytesOf, rateTailOf, digestBytes, digestOfState, List.range_succ, List.range'_succ]
+
+/-- A big-endian word of a prefix's bytes is read off the prefix. -/
+theorem beWord_append (a b : List UInt8) (s : ℕ) (h : s + 8 ≤ a.length) :
+    PcsQuotient.Transcript.beWord (a ++ b) s = PcsQuotient.Transcript.beWord a s := by
+  simp (disch := omega) [PcsQuotient.Transcript.beWord, List.range_succ, List.getElem?_append_left]
+
+/-- **Challenge `0` of a wide draw is `sample`'s** (`challenge_of` of the digest). -/
+theorem challengeAt_zero (st : KeccakState) :
+    challengeAt (rateBytesOf st) 0 = PcsQuotient.Transcript.challengeOf (digestOfState st) := by
+  have hl := digestBytes_length_eq (digestOfState st)
+  simp only [challengeAt, PcsQuotient.Transcript.challengeOf, rateBytesOf_eq, Nat.mul_zero, Nat.zero_add]
+  rw [beWord_append _ _ _ (by omega), beWord_append _ _ _ (by omega), beWord_append _ _ _ (by omega)]
+
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
@@ -87,6 +156,18 @@ def sampleNarrow : ChanM m E := do
   set { c with absorbed := c.cursor, state := state, challenges := c.challenges.push x }
   return x
 
+/-- **`Channel::sample_wide(count)`** (`KeccakChannel`, π1-rec4): one Keccak-256 of the state and the bytes read since
+the last challenge, as `sample` hashes them (`wideDraw`): the digest is the new state, and `count` challenges (at most
+`wideMax`) are read off the sponge's rate after its last permutation (`challengeAt`), challenge `0` `sample`'s
+(`challengeAt_zero`). The channel keeps them among its challenges, in order. -/
+def sampleWide (count : ℕ) : ChanM m (List E) := do
+  let c ← get
+  let input := digestBytes c.state ++ (c.data.extract c.absorbed c.cursor).toList
+  let st ← (keccak256StateWith F input : m KeccakState)
+  let xs := (List.range count).map (challengeAt (rateBytesOf st))
+  set { c with absorbed := c.cursor, state := digestOfState st, challenges := c.challenges ++ xs.toArray }
+  return xs
+
 /-- A challenge, narrow or not. -/
 def sampleDrawn (narrow : Bool) : ChanM m E :=
   match narrow with
@@ -98,7 +179,7 @@ each next the square of the one before (the others). -/
 def drawRun (fs : FsShape) (count : ℕ) : ChanM m (List E) :=
   match fs with
   | .main => samples F count
-  | .rec1 | .rec2 | .rec3 =>
+  | .rec1 | .rec2 | .rec3 | .rec4 =>
     if count = 0 then pure [] else do
       let c ← sample F
       pure (squares c count)
@@ -170,6 +251,21 @@ def zerocheckFs (logN k : ℕ) (fs : FsShape := .main) : ChanM m (Option E × Li
 
 theorem zerocheckFs_main (logN k : ℕ) : zerocheckFs F logN k .main = zerocheck F logN k := rfl
 
+/-- **`zerocheck(log_n, k, fs, Some(c))`** (π1-rec4): `zerocheckFs`, the coordinates after the seven fixed ones the
+caller's `c` and its successive squares (`c` drawn with the bus's challenges, before Flock: `sampleWide`). -/
+def zerocheckFirst (logN k : ℕ) (c : E) : ChanM m (Option E × List E × E × E × E) := do
+  let sampled := squares c (logN - k - nFixed)
+  let r : List (Option E) := (fixedChallenges ++ sampled).map some
+  let (zSkip, claim) ← if k > 0 then do
+      let coset ← nextScalars (m := m) (2 ^ k)
+      let z ← sample F
+      pure (some z, lagrangeInterpolate (2 ^ (k + 1)) (List.replicate (2 ^ k) 0 ++ coset) z)
+    else pure (none, 0)
+  let (chi, running) ← sumcheck F claim 3 r
+  let vA ← nextScalar (m := m)
+  let vB ← nextScalar (m := m)
+  return (zSkip, chi, vA, vB, running + vA * vB)
+
 end With
 
 end Flock
@@ -195,7 +291,7 @@ def batchFs (fs : FsShape) (combined : List (Commitment × Combined)) (layouts :
     | some (p, _) => target + scale * p.claim
     | none => target
   let (r, last) ← match fs with
-    | .rec3 => do
+    | .rec3 | .rec4 => do
       let (r, _, last) ← sumcheckPairsDrawn F target 2 vars true
       pure (r, last)
     | .main | .rec1 | .rec2 => sumcheckDrawn F target 3 (List.replicate vars none) fs.narrow

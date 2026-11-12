@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- The zero-knowledge statement of `docs/membership/HIDING.md` (zero knowledge assuming a zero-knowledge PCS), in
--- leanerVM's programmable random-permutation model (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0:
--- `Statement/RandomPermutation.lean`, whose lazily sampled permutation the simulator's model is).
+-- The zero-knowledge statement of `docs/membership/PROTOCOL.md`, "Zero knowledge" (zero knowledge assuming a
+-- zero-knowledge PCS), in leanerVM's programmable random-permutation model (branch `mumbai`, commit 6175f1a0, MIT OR
+-- Apache-2.0: `Statement/RandomPermutation.lean`, whose lazily sampled permutation the simulator's model is).
 module
 
 public import PcsQuotient.Security
@@ -9,11 +9,14 @@ public import PcsQuotient.Security
 /-!
 # Zero knowledge, assuming a zero-knowledge PCS
 
-`docs/membership/HIDING.md`: the EIP's PCS is assumed zero-knowledge — a commitment's root and an opening reveal
-nothing beyond the commitment's out-of-domain answer and the claim — and the protocol makes everything else it
-reveals (the out-of-domain answers, the four `a_j`, `Q`'s and `G`'s values) uniform with its randomness (the
-masks, the random rows, the blinding of `h`). The deployed openings are leanVM's WHIR, which is not
-zero-knowledge: this is a statement about the protocol over an ideal PCS.
+`docs/membership/PROTOCOL.md`, "Zero knowledge": the EIP's PCS is assumed zero-knowledge — a commitment's root and
+an opening reveal nothing beyond the commitment's out-of-domain answer and the claim — and the protocol makes
+everything else it reveals (the two out-of-domain answers and the three values `X`, `C`, `V + Y` at `t`) uniform with
+its randomness (the random rows, the blinding of `h`, the quotient table's slack words). The statement is about the
+protocol **over any PCS** `pcs` (`Security.lean`'s `pcsExperiment pcs`, `ZeroKnowledgeWith pcs`) that is
+zero-knowledge in the prover's use of it (`PcsZeroKnowledge pcs sim εpcs`). The deployed PCS (`realPcs`, leanVM's
+WHIR: Merkle roots of the tables' words, opened leaves in the clear) is not zero-knowledge — two witnesses of one
+statement differ in words its opened leaves reveal — so it is not an instance; the EIP's ZK-WHIR is meant to be.
 
 **The simulator's model** (`edgeOracle`): mumbai's lazily sampled permutation (`lazyRandomPermutation`) on the
 edges component of a state `Edges × A`, coins forwarded; the extra component `A` is a PCS simulator's own.
@@ -25,57 +28,74 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
 * **The ideal PCS** (`idealPcs`): a commitment's root is uniform and independent of the table, its out-of-domain
   answer the table's polynomial at the root's point (computed with the model's permutation); an opening is the
   opening simulator's.
-* **The hybrid experiment** (`hybridExperiment`): the honest prover with the witness, its four secret tables
+* **The hybrid experiment** (`hybridExperiment`): the honest prover with the witness, its two secret tables
   committed and opened by the ideal PCS (`proveWithPcs`), the circuit's commitment and the wiring opening (public)
   real, then the distinguisher, every query answered by the simulator's oracle.
-* **`PcsZeroKnowledge sim εpcs`**, the hypothesis on the PCS: the real experiment (`Security.lean`'s
-  `realExperiment`) and the hybrid differ by at most `εpcs Q` for a distinguisher of `Q` calls.
-* **The revealed scalars** (`revealed`): the answers `revealAnswer` gives to the ten queries `revealQueries c` of
-  the challenges `c`: four out-of-domain answers, the four `a_j`, `Q`'s and `G`'s values.
-* **`RevealedUniform εr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples of
-  probability at most `εr` (the out-of-domain points and `α, β, γ, t, ρ` uniform), the revealed scalars are
-  uniform when the prover's randomness is (`HIDING.md`'s rank conditions).
+* **`PcsZeroKnowledge pcs sim εpcs`**, the hypothesis on the PCS `pcs`: the protocol's experiment over `pcs`
+  (`Security.lean`'s `pcsExperiment pcs`) and the hybrid of `sim` differ by at most `εpcs Q` for a distinguisher of
+  `Q` calls. It holds for `pcs` exactly when `pcs`'s roots look uniform and independent of the tables (hiding), its
+  out-of-domain answers are the tables' (as the claims are), and its openings are simulated by `sim.simOpen` from the
+  commitment and the claim alone, each within `εpcs`, in the prover's use of it (two commitments, the second table
+  chosen after the first root, and two openings): the EIP's ZK-WHIR assumption, stated for this protocol's
+  experiment rather than as a stand-alone PCS game.
+* **It is satisfiable**: the ideal PCS of the model (`PcsOps.idealOf simO`: the root uniform from the coins, the
+  out-of-domain answer the table's, the opening any program `simO` of the commitment and the claim in the model)
+  meets it with `εpcs = 0` for the simulator `PcsSimulator.ofOpen simO` (`formal/EndToEnd/ZK`,
+  `pcsZeroKnowledge_idealOf`), so the end theorem is not vacuous (`zeroKnowledge_idealOf`). That ideal PCS is hiding
+  but not binding: it shows the hypothesis consistent, so the theorem has content; that a sound ZK-WHIR satisfies it
+  is not proved (`docs/LEAN_PORT.md`).
+* **The revealed scalars** (`revealed`): the answers `revealAnswer` gives to the five queries `revealQueries c` of
+  the challenges `c`: the two out-of-domain answers and the three values at `t`.
+* **`RevealedUniform εr δr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples
+  of probability at most `εr` (the out-of-domain points and `α, β, μ, t, ρ` uniform), the revealed scalars with
+  uniform prover's randomness are within statistical distance `δr` of uniform (`UniformWithin`). With the
+  quotient table's four slack words the protocol makes them exactly uniform (`δr = 0`) outside a set of challenges:
+  `X`, `C`, `V + Y` and `W`'s answer are `K`-affine in the 32 random rows' words with a linear part the challenges
+  fix (exact at rank `12`; group 1), and `T`'s answer is affine in the four slack words with weights of `T`'s
+  out-of-domain point alone, `c · {1, u₀, u₁, u₂}` (group 2), so it is uniform given the rest when those weights
+  span `E` over `K`, which fails with probability about `2^-127` over the point (`PROTOCOL.md`, "Zero knowledge").
+  `formal/EndToEnd/ZK` proves the group-2 half (`revealedUniform_of_group1`): `RevealedUniform` with `δr = 0`
+  follows from group 1's exact uniformity, `εr` its failure plus the span's failure (`spanFail`, the probability
+  over a uniform `T` point), which it bounds by `εslack ≤ 2^-126` (`spanFail_le`, `εslack_le`;
+  `zeroKnowledge_pcs_slack`: zero knowledge within `εpcs Q + ε1 + εslack + εfs₀` from `Group1Uniform ε1`).
 * **The simulator** (`zkSimulator sim`): it reads no witness. Its challenge phase (`challengePhase`, with
   `uniformReveal`) commits to the circuit (real, public), draws each root uniformly and computes its out-of-domain
   point with the model's permutation, draws each revealed scalar uniformly (`coinE`) where the prover computes it,
-  and runs the reduction's chain on them (`α, β, γ, t, ρ`), `next` the public wiring value; then (`finishOpenings`) it
-  opens the wiring claim with the real WHIR prover (public table) and the five secret claims with `simOpen`.
+  and runs the reduction's chain on them (`α, β, μ, t, ρ`), `next` the public wiring value; then (`finishOpenings`) it
+  opens the wiring claim with the real WHIR prover (public table) and the two secret claims with `simOpen`.
 * **`FiatShamirUniform εfs`**, the random-permutation model's Fiat–Shamir challenges: in the simulator's challenge
   phase (uniform roots and uniform revealed scalars, the lazily sampled permutation, after the circuit's
-  commitment), the challenges are within `εfs` of `sampleChallenges` on every event. This is a property of the
+  commitment), the challenges and the revealed scalars (`answersOf`) are jointly within `εfs` of independent
+  `sampleChallenges` and uniform scalars, on every observation with values in `[0, 1]`. This is a property of the
   model and of the transcript's encoding (each challenge is a Keccak-256 of an input holding a fresh uniform root,
-  a fresh uniform scalar or a fresh permutation answer), not of the PCS nor of the witness; it is proved at
-  `εfs₀ ≤ 2^-162` (`formal/EndToEnd/ZK`, `fiatShamirUniform_closed`).
+  a fresh uniform scalar or a fresh permutation answer), not of the PCS nor of the witness; it is proved
+  (`formal/EndToEnd/ZK`, `fiatShamirUniform_closed`).
 
-**What changed from the first draft** (orchestrator's), so that the theorem is true and provable:
-1. `PcsSimulator.oracle` was arbitrary, so the chain's challenges in the hybrid need not be uniform. The simulator's
-   oracle is now the lazily sampled permutation of the model on the edges component (`edgeOracle`), and a PCS
-   simulator only adds its state and its opening simulator, which may read and program edges. (This restricts the
-   PCS simulators `PcsZeroKnowledge` may be instantiated with to programming ones: a simulator with an oracle of its
-   own, such as an indifferentiability simulator answering fresh queries specially, is not covered.)
-2. `revealed` is the map of `revealAnswer` over `revealQueries` (the same ten scalars as before, in the same
-   order), so that the simulator's queries and the prover's answers are named; `Q`'s and `G`'s values read the
-   reduction's claim through `Option.map`/`getD` (zero if it rejects, as before), `next` through `wiringValue`
-   (equal to `rowValues`' by definition). `revealAnswer`, `challengePhase` and `finishOpenings` take the circuit
-   (the membership circuit's in `revealed`, `zkSimulator`, `FiatShamirUniform`), so that the end theorem's
-   equations never unfold the `2^22`-row circuit.
+**The shape of the statement**, so that the theorem is true and provable:
+1. The simulator's oracle is the lazily sampled permutation of the model on the edges component (`edgeOracle`),
+   and a PCS simulator only adds its state and its opening simulator, which may read and program edges. (This
+   restricts the PCS simulators `PcsZeroKnowledge` may be instantiated with to programming ones: a simulator with an
+   oracle of its own, such as an indifferentiability simulator answering fresh queries specially, is not covered.)
+2. `revealed` is the map of `revealAnswer` over `revealQueries`, so that the simulator's queries and the prover's
+   answers are named; `next` is read through `wiringValue` (equal to `valuesAt`'s by definition). `revealAnswer`,
+   `challengePhase` and `finishOpenings` take the circuit (the membership circuit's in `revealed`, `zkSimulator`,
+   `FiatShamirUniform`), so that the end theorem's equations never unfold the `2^22`-row circuit.
 3. The simulator is in the statement (`zkSimulator`), with its challenge phase separate (`challengePhase`), and a
    third proposition, `FiatShamirUniform`, about that phase. The adaptivity argument (the revealed scalars are
-   uniform at every fixed good challenge tuple, while the challenges are hashes of inputs holding the revealed
-   scalars) bounds the distance of the hybrid and the simulator by the probability that the simulator's own
-   challenges are bad; `RevealedUniform` bounds it at uniform challenges, so the simulator's challenges must be
-   near-uniform. That is a random-permutation-model freshness bound on the transcript, **proved** in
-   `formal/EndToEnd/ZK` (`fiatShamirUniform_closed`: `FiatShamirUniform εfs₀`, `εfs₀ = 113 · δq L ≤ 2^-162`, every
-   input of a challenge's permutation call injective in a value drawn just before it, among at most
-   `5 · 2^19 + 140` edges).
+   near-uniform at every fixed good challenge tuple, while the challenges are hashes of inputs holding the revealed
+   scalars) bounds the distance of the hybrid and the simulator by the expectation, over the simulator's own
+   challenges and revealed scalars, of the shortfall of the scalars' mass under the prover's randomness against
+   their uniform mass; at independent uniform challenges and scalars that is the expected statistical distance,
+   at most `εr + δr` (`RevealedUniform`), so the simulator's challenges and scalars must be jointly near-uniform: a random-permutation-model freshness bound on the transcript, **proved** in `formal/EndToEnd/ZK`.
 4. The simulator draws each revealed scalar last before the Fiat–Shamir input it must make unpredictable (`W`'s
-   answer after the chain's seed, `H`'s after `Q`'s and `G`'s, `a_0` after `a_1, a_2, a_3`); `revealQueries` lists
-   them in that order and `sampleChallenges` draws in the reduction's order (the same distributions).
+   answer after the chain's seed, `T`'s after `α, β, μ`, `X` after `C` and `V + Y`); `revealQueries` lists them in
+   that order and `sampleChallenges` draws in the reduction's order (the same distributions).
 
-The end theorems (`formal/EndToEnd/ZK`): `PcsQuotient.EndToEnd.zeroKnowledge_pcs` states `ZeroKnowledgeWith` for
-`zkSimulator sim` under `PcsZeroKnowledge`, `RevealedUniform` and `FiatShamirUniform`, with
-`ζ Q = εpcs Q + εr + εfs`; `zeroKnowledge_pcs_closed` under the first two only, `ζ Q = εpcs Q + εr + εfs₀`,
-`εfs₀ ≤ 2^-162`.
+The end theorems (`formal/EndToEnd/ZK`), each for every PCS `pcs` and PCS simulator `sim`:
+`PcsQuotient.EndToEnd.zeroKnowledge_pcs` states `ZeroKnowledgeWith pcs` for `zkSimulator sim` under
+`PcsZeroKnowledge pcs sim εpcs`, `RevealedUniform` and `FiatShamirUniform`, with `ζ Q = εpcs Q + εr + δr + εfs`;
+`zeroKnowledge_pcs_closed` under the first two only, `ζ Q = εpcs Q + εr + δr + εfs₀`; `zeroKnowledge_pcs_slack`
+under `PcsZeroKnowledge` and `Group1Uniform ε1` only, `ζ Q = εpcs Q + ε1 + εslack + εfs₀`.
 -/
 
 @[expose] public section
@@ -153,7 +173,28 @@ noncomputable def idealPcs : PcsOps (StateT sim.S ProbComp) Unit where
     return ((), ⟨root, tableEval table z⟩)
   openClaim _ c claim := sim.simOpen c claim
 
+/-- **The PCS simulator of an opening program** `simO` of the model (no programming of `π`): no state of its own,
+its opening `simO` run with the model's oracle. -/
+noncomputable def ofOpen (simO : Commitment → Claim → OracleComp RandomPermutationOracles (Option Compile.Proof)) :
+    PcsSimulator where
+  Aux := Unit
+  aux₀ := ()
+  simOpen c claim := simulateQ edgeOracle (simO c claim)
+
 end PcsSimulator
+
+/-- **The ideal PCS of the model** with the opening program `simO`, a PCS in the model (`PcsOps` over the model's
+oracles, as `pcsExperiment` takes): a commitment's root uniform from the coins, independent of the table, its
+out-of-domain answer the table's polynomial at the root's point (over `π`); an opening `simO` of the commitment and
+the claim alone. It is zero-knowledge with `εpcs = 0` for `PcsSimulator.ofOpen simO` (`formal/EndToEnd/ZK`,
+`pcsZeroKnowledge_idealOf`). -/
+def PcsOps.idealOf (simO : Commitment → Claim → OracleComp RandomPermutationOracles (Option Compile.Proof)) :
+    PcsOps (OracleComp RandomPermutationOracles) Unit where
+  commit μ table := do
+    let root ← sampleDigest
+    let z ← oodPointWith queryPermutation μ root
+    return ((), ⟨root, tableEval table z⟩)
+  openClaim _ c claim := simO c claim
 
 /-! ### The hypothesis on the PCS -/
 
@@ -168,105 +209,90 @@ noncomputable def hybridExperiment (sim : PcsSimulator) (stmt : Statement) (w : 
       (circuit.cells (membershipInputs w)) coins
     simulateQ sim.oracle (D proof)).run' sim.s₀
 
-/-- **The PCS is zero-knowledge for the prover's use of it** (the hypothesis): the real experiment and the hybrid
-of the simulator `sim` differ by at most `εpcs Q` for every statement and witness of the relation and every
-distinguisher of at most `Q` calls of `π`, `π⁻¹`. -/
-def PcsZeroKnowledge (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) : Prop :=
+/-- **The PCS `pcs` is zero-knowledge for the prover's use of it** (the hypothesis), with the simulator `sim`: the
+protocol's experiment over `pcs` (`pcsExperiment`) and the hybrid of `sim` (the ideal PCS: uniform roots, the
+tables' out-of-domain answers, `sim.simOpen`'s openings) differ by at most `εpcs Q` for every statement and witness
+of the relation and every distinguisher of at most `Q` calls of `π`, `π⁻¹`. -/
+def PcsZeroKnowledge {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd) (sim : PcsSimulator)
+    (εpcs : ℕ → ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
   ∀ (D : Distinguisher) (Q : ℕ), (∀ proof, QueryCostAtMost (D proof) permutationCallCost Q) →
-    Pr{let b ← realExperiment stmt w D}[b = true] ≤ Pr{let b ← hybridExperiment sim stmt w D}[b = true] + εpcs Q ∧
-      Pr{let b ← hybridExperiment sim stmt w D}[b = true] ≤ Pr{let b ← realExperiment stmt w D}[b = true] + εpcs Q
+    Pr{let b ← pcsExperiment pcs stmt w D}[b = true] ≤
+        Pr{let b ← hybridExperiment sim stmt w D}[b = true] + εpcs Q ∧
+      Pr{let b ← hybridExperiment sim stmt w D}[b = true] ≤
+        Pr{let b ← pcsExperiment pcs stmt w D}[b = true] + εpcs Q
 
 /-! ### The revealed scalars -/
 
-/-- **The challenges a proof's revealed scalars depend on**: the out-of-domain points of `W`, `H`, `Q`, `G` and the
-chain's five challenges. -/
+/-- **The challenges a proof's revealed scalars depend on**: the out-of-domain points of `W` and `T` and the
+chain's challenges. -/
 structure Challenges where
   zW : List E
-  zH : List E
-  zQ : List E
-  zG : List E
+  zT : List E
   α : E
   β : E
-  γ : E
+  μ : E
   t : E
   ρ : E
 
-/-- The public wiring polynomial at `t` (`rowValues`' `next`). -/
+/-- The public wiring polynomial at `t` (`valuesAt`' `next`). -/
 def wiringValue (circuit : Circuit) (t : E) : E :=
   novelEval circuit.wiringTable 0 1 ((digitsOf t (cellVars circuit.logRows)).take (cellVars circuit.logRows))
 
-/-- **A revealed scalar, as a query**: the out-of-domain answer of `W` at `z`; of `H`, `Q`, `G` (tables at
-`α, β, γ`) at `z`; the row value `a_j` at `t`; `Q`'s and `G`'s values at the points of the reduction's claims at
-`α, β, γ, t, ρ`. -/
+/-- **A revealed scalar, as a query**: the out-of-domain answer of `W` at `z`; of `T` (its table at `α, β, μ`) at
+`z`; the value `j` of `X`, `C`, `V + Y` at `t`. -/
 inductive Reveal where
   | oodW (z : List E)
-  | oodH (α β γ : E) (z : List E)
-  | oodQ (α β γ : E) (z : List E)
-  | oodG (α β γ : E) (z : List E)
-  | value (j : Fin 4) (t : E)
-  | qValue (α β γ t ρ : E)
-  | gValue (α β γ t ρ : E)
+  | oodT (α β μ : E) (z : List E)
+  | value (j : Fin 3) (t : E)
 
 /-- **The prover's answer to a reveal query**, for the circuit `circuit`, the statement `stmt`, the circuit's cells
-`cells₀` and the randomness `coins`: the table's polynomial at the point (`Q`'s and `G`'s at the reduction's points,
-the row values `a` the prover's at `t`, `next` the public `wiringValue`, `Q`'s and `G`'s values zero; zero if the
-reduction rejects). -/
+`cells₀` and the randomness `coins`: the table's polynomial at the point, or the prover's value at `t`. -/
 def revealAnswer (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) : Reveal → E
   | .oodW z => tableEval (witnessTable circuit cells₀ coins) z
-  | .oodH α β γ z => tableEval (quotientTables circuit cells₀ coins α β γ).1 z
-  | .oodQ α β γ z => tableEval (quotientTables circuit cells₀ coins α β γ).2.1 z
-  | .oodG α β γ z => tableEval (quotientTables circuit cells₀ coins α β γ).2.2 z
-  | .value j t => (rowValues circuit cells₀ coins t).1[j]
-  | .qValue α β γ t ρ =>
-    ((claimsAt circuit.logRows stmt α β γ t ρ (rowValues circuit cells₀ coins t).1 (wiringValue circuit t) 0
-        0).map fun cl ↦ tableEval (quotientTables circuit cells₀ coins α β γ).2.1 cl.q.point).getD 0
-  | .gValue α β γ t ρ =>
-    ((claimsAt circuit.logRows stmt α β γ t ρ (rowValues circuit cells₀ coins t).1 (wiringValue circuit t) 0
-        0).map fun cl ↦ tableEval (quotientTables circuit cells₀ coins α β γ).2.2 cl.g.point).getD 0
+  | .oodT α β μ z => tableEval (quotientTable circuit stmt cells₀ coins α β μ) z
+  | .value j t => (valuesAt circuit cells₀ coins t).1[j]
 
-/-- **The ten reveal queries of the challenges `c`**, in the order the simulator draws them (`challengePhase`): the
-out-of-domain answers of `W`, `Q`, `G`, `H`, the row values `a_1, a_2, a_3, a_0`, `Q`'s and `G`'s values. (The
-order is the simulator's: each scalar that a Fiat–Shamir input must be unpredictable in is drawn last before
-that input.) -/
+/-- **The five reveal queries of the challenges `c`**, in the order the simulator draws them (`challengePhase`):
+the out-of-domain answers of `W` and `T`, the values `C`, `V + Y`, then `X`. (Each scalar that a Fiat–Shamir input
+must be unpredictable in is drawn last before that input.) -/
 def revealQueries (c : Challenges) : List Reveal :=
-  [.oodW c.zW, .oodQ c.α c.β c.γ c.zQ, .oodG c.α c.β c.γ c.zG, .oodH c.α c.β c.γ c.zH, .value 1 c.t,
-    .value 2 c.t, .value 3 c.t, .value 0 c.t, .qValue c.α c.β c.γ c.t c.ρ, .gValue c.α c.β c.γ c.t c.ρ]
+  [.oodW c.zW, .oodT c.α c.β c.μ c.zT, .value 1 c.t, .value 2 c.t, .value 0 c.t]
 
-/-- **The scalars a proof reveals** besides the roots, `next` (the public wiring's) and `H`'s value (which the
-others determine), for the membership circuit's cells `cells₀`, the randomness `coins` and the challenges `c`: the
-four out-of-domain answers, the four `a_j`, then `Q`'s and `G`'s values at their points (the reduction's, after
-`ρ`; zero if it rejects). -/
+/-- **The scalars a proof reveals** besides the roots and `next` (the public wiring's), for the membership
+circuit's cells `cells₀`, the randomness `coins` and the challenges `c`: the two out-of-domain answers and the
+three values at `t`. -/
 def revealed (stmt : Statement) (cells₀ : Array K) (coins : Coins) (c : Challenges) : List E :=
   (revealQueries c).map (revealAnswer (membership logRows) stmt cells₀ coins)
 
-/-- Uniform challenges: the points of `m + 1`, `m + 3`, `m + 4`, `m + 1` uniform coordinates, and five uniform
-elements, drawn in the order of the reduction (`W`'s point, `α, β, γ`, the parts' points, `t`, `ρ`). -/
+/-- Uniform challenges: the points of `m` and `m + 4` uniform coordinates, and five uniform elements, drawn in the
+order of the reduction (`W`'s point, `α, β, μ`, `T`'s point, `t`, `ρ`). -/
 noncomputable def sampleChallenges : ProbComp Challenges := runWithRandomPermutation do
   let m := cellVars logRows
-  let zW ← coinEs (m + 1)
+  let zW ← coinEs m
   let α ← coinE
   let β ← coinE
-  let γ ← coinE
-  let zH ← coinEs (m + 3)
-  let zQ ← coinEs (m + 4)
-  let zG ← coinEs (m + 1)
+  let μ ← coinE
+  let zT ← coinEs (m + 4)
   let t ← coinE
   let ρ ← coinE
-  return ⟨zW, zH, zQ, zG, α, β, γ, t, ρ⟩
+  return ⟨zW, zT, α, β, μ, t, ρ⟩
 
-/-- **The revealed scalars are uniform at the challenges `c`**: with uniform randomness they are ten uniform
-elements of `E`. -/
-def UniformAt (stmt : Statement) (cells₀ : Array K) (c : Challenges) : Prop :=
-  ∀ r : List E, Pr{let x ← runWithRandomPermutation (do return revealed stmt cells₀ (← sampleCoins) c)}[x = r] =
-    Pr{let x ← runWithRandomPermutation (coinEs 10)}[x = r]
+/-- **The revealed scalars are within `δ` of uniform at the challenges `c`**: with uniform randomness, their
+distribution is within statistical distance `δ` of five uniform elements of `E` (`Σ_r (u(r) − p(r))⁺ ≤ δ`, `u` the
+uniform mass, `p` the revealed scalars', the subtraction truncated: the total variation distance). -/
+def UniformWithin (stmt : Statement) (cells₀ : Array K) (c : Challenges) (δ : ℝ≥0∞) : Prop :=
+  ∑' r : List E, (Pr{let x ← runWithRandomPermutation (coinEs 5)}[x = r] -
+      Pr{let x ← runWithRandomPermutation (do return revealed stmt cells₀ (← sampleCoins) c)}[x = r]) ≤ δ
 
-/-- **The protocol's randomness hides the revealed scalars** (the hypothesis on the rank conditions of
-`HIDING.md`): for every statement and witness of the relation, the revealed scalars are uniform at all but a set
-of challenges of probability at most `εr`. -/
-def RevealedUniform (εr : ℝ≥0∞) : Prop :=
+/-- **The protocol's randomness hides the revealed scalars** (`PROTOCOL.md`'s rank conditions): for every
+statement and witness of the relation, outside a set of challenges of probability at most `εr`, the revealed
+scalars are within statistical distance `δr` of uniform. With the slack words the deployed protocol is expected to
+meet it at `δr = 0` and `εr` group 1's rank failure (morally about `|K|^-20`) plus about `2^-127` for the slack's
+span (`formal/EndToEnd/ZK`, `revealedUniform_of_group1`, reduces it to group 1 and that span probability). -/
+def RevealedUniform (εr δr : ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
-    Pr{let c ← sampleChallenges}[¬ UniformAt stmt ((membership logRows).cells (membershipInputs w)) c] ≤ εr
+    Pr{let c ← sampleChallenges}[¬ UniformWithin stmt ((membership logRows).cells (membershipInputs w)) c δr] ≤ εr
 
 /-! ### The simulator -/
 
@@ -278,17 +304,22 @@ structure PhaseOut where
   proof : ReductionProof
   reduced : Option Reduced
 
+/-- **The revealed scalars of a challenge phase's output**, in the order of `revealQueries`: `W`'s and `T`'s
+out-of-domain answers, the values `C`, `V + Y`, then `X`. -/
+def answersOf (out : PhaseOut) : List E :=
+  [out.proof.witness.ood, out.proof.table.ood, out.proof.values[1], out.proof.values[2], out.proof.values[0]]
+
 /-- **The challenge phase** of a prover whose revealed scalars come from `rv` (the honest prover's: `revealAnswer`;
 the simulator's: uniform), over the model's permutation: the circuit's commitment (public); each secret table's
 root uniform, its out-of-domain point from the root, its out-of-domain answer from `rv`; the reduction's chain
-(`α, β, γ` after `W`, `t` after `H`, `Q`, `G`), the four `a_j` from `rv`, `next` public, `ρ`, then `Q`'s and `G`'s
-values from `rv`; the challenges, and the proof, commitments and claims. -/
+(`α, β, μ` after `W`, `t` after `T`), the three values from `rv`, `next` public, `ρ`; the challenges, and the proof,
+commitments and claims. -/
 noncomputable def challengePhase {A : Type} (circuit : Circuit) (stmt : Statement)
     (rv : Reveal → StateT (Edges × A) ProbComp E) : StateT (Edges × A) ProbComp (Challenges × PhaseOut) := do
   let mv := cellVars circuit.logRows
   let (indexTree, index) ← commitmentWith edgePerm mv circuit.wiringTable
   let rW ← simulateQ edgeOracle sampleDigest
-  let zW ← oodPointWith edgePerm (mv + 1) rW
+  let zW ← oodPointWith edgePerm mv rW
   let c ← Chain.startWith edgePerm (label index stmt)
   let oW ← rv (.oodW zW)
   let wCom : Commitment := ⟨rW, oW⟩
@@ -296,39 +327,26 @@ noncomputable def challengePhase {A : Type} (circuit : Circuit) (stmt : Statemen
   let c := c.absorbCommitment wS
   let (α, c) ← c.squeezeWith edgePerm
   let (β, c) ← c.squeezeWith edgePerm
-  let (γ, c) ← c.squeezeWith edgePerm
-  let rH ← simulateQ edgeOracle sampleDigest
-  let zH ← oodPointWith edgePerm (mv + 3) rH
-  let rQ ← simulateQ edgeOracle sampleDigest
-  let zQ ← oodPointWith edgePerm (mv + 4) rQ
-  let rG ← simulateQ edgeOracle sampleDigest
-  let zG ← oodPointWith edgePerm (mv + 1) rG
-  let oQ ← rv (.oodQ α β γ zQ)
-  let oG ← rv (.oodG α β γ zG)
-  let oH ← rv (.oodH α β γ zH)
-  let hCom : Commitment := ⟨rH, oH⟩
-  let qCom : Commitment := ⟨rQ, oQ⟩
-  let gCom : Commitment := ⟨rG, oG⟩
-  let hS := CommitmentScalars.of hCom
-  let qS := CommitmentScalars.of qCom
-  let gS := CommitmentScalars.of gCom
-  let c := ((c.absorbCommitment hS).absorbCommitment qS).absorbCommitment gS
+  let (μ, c) ← c.squeezeWith edgePerm
+  let rT ← simulateQ edgeOracle sampleDigest
+  let zT ← oodPointWith edgePerm (mv + 4) rT
+  let oT ← rv (.oodT α β μ zT)
+  let tCom : Commitment := ⟨rT, oT⟩
+  let tS := CommitmentScalars.of tCom
+  let c := c.absorbCommitment tS
   let (t, c) ← c.squeezeWith edgePerm
-  let a1 ← rv (.value 1 t)
-  let a2 ← rv (.value 2 t)
-  let a3 ← rv (.value 3 t)
-  let a0 ← rv (.value 0 t)
-  let a : Vector E 4 := #v[a0, a1, a2, a3]
+  let v1 ← rv (.value 1 t)
+  let v2 ← rv (.value 2 t)
+  let v0 ← rv (.value 0 t)
+  let vals : Vector E 3 := #v[v0, v1, v2]
   let next := wiringValue circuit t
-  let c := (a.toList.foldl Chain.absorb c).absorb next
+  let c := (vals.toList.foldl Chain.absorb c).absorb next
   let (ρ, _) ← c.squeezeWith edgePerm
-  let vq ← rv (.qValue α β γ t ρ)
-  let vg ← rv (.gValue α β γ t ρ)
-  return (⟨zW, zH, zQ, zG, α, β, γ, t, ρ⟩,
-    ⟨indexTree, index, ⟨wS, hS, qS, gS, a, next, vq, vg⟩,
-      (claimsAt circuit.logRows stmt α β γ t ρ a next vq vg).map fun cl ↦ ⟨⟨wCom, hCom, qCom, gCom⟩, cl⟩⟩)
+  return (⟨zW, zT, α, β, μ, t, ρ⟩,
+    ⟨indexTree, index, ⟨wS, tS, vals, next⟩,
+      (claimsAt circuit.logRows stmt α β μ t ρ vals next).map fun cl ↦ ⟨⟨wCom, tCom⟩, cl⟩⟩)
 
-/-- **The openings**: the wiring claim by the real WHIR prover (the public table and the circuit's tree), the five
+/-- **The openings**: the wiring claim by the real WHIR prover (the public table and the circuit's tree), the two
 secret claims by the opening simulator; `none` if the reduction rejected or an opening fails. -/
 noncomputable def finishOpenings (sim : PcsSimulator) (circuit : Circuit) (out : PhaseOut) :
     StateT sim.S ProbComp (Option Proof) :=
@@ -338,11 +356,8 @@ noncomputable def finishOpenings (sim : PcsSimulator) (circuit : Circuit) (out :
     let some oW ← sim.simOpen r.commitments.witness r.claims.witness | return none
     let some oσ ← proveClaimWith sim.perm nonceFuel out.indexTree circuit.wiringTable out.index r.claims.wiring
       | return none
-    let some oH ← sim.simOpen r.commitments.h r.claims.h | return none
-    let some oQ ← sim.simOpen r.commitments.q r.claims.q | return none
-    let some oG ← sim.simOpen r.commitments.g r.claims.g | return none
-    let some oS ← sim.simOpen r.commitments.h r.claims.sum | return none
-    return some ⟨out.proof, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+    let some oT ← sim.simOpen r.commitments.table r.claims.copy | return none
+    return some ⟨out.proof, ⟨oW, oσ, oT⟩⟩
 
 /-- The simulator's revealed scalars: each uniform, from the model's coins. -/
 noncomputable def uniformReveal {A : Type} (_ : Reveal) : StateT (Edges × A) ProbComp E :=
@@ -356,13 +371,17 @@ noncomputable def zkSimulator (sim : PcsSimulator) (stmt : Statement) : StateT s
 
 /-! ### The hypothesis on the model's Fiat–Shamir challenges -/
 
-/-- **The simulator's challenges are near-uniform** (the random-permutation model's freshness bound on the
-transcript): from no edge, the challenges of the simulator's challenge phase satisfy every event with at most the
-probability of uniform challenges plus `εfs`. The extra state component `A` is never read by the phase. -/
+/-- **The simulator's challenges and revealed scalars are near-uniform** (the random-permutation model's freshness
+bound on the transcript): from no edge, on every observation `h` with values in `[0, 1]`, the simulator's challenge
+phase's challenges and revealed scalars (`answersOf`) have at most the expectation of independent uniform challenges
+(`sampleChallenges`) and five uniform elements of `E`, plus `εfs`. The extra state component `A` is never read by the
+phase. -/
 def FiatShamirUniform (εfs : ℝ≥0∞) : Prop :=
-  ∀ (A : Type) (a₀ : A) (stmt : Statement) (B : Challenges → Prop),
-    Pr{let x ← (challengePhase (A := A) (membership logRows) stmt uniformReveal).run' ([], a₀)}[B x.1] ≤
-      Pr{let c ← sampleChallenges}[B c] + εfs
+  ∀ (A : Type) (a₀ : A) (stmt : Statement) (h : Challenges → List E → ℝ≥0∞), (∀ c a, h c a ≤ 1) →
+    ∑' x, Pr{let y ← (challengePhase (A := A) (membership logRows) stmt uniformReveal).run' ([], a₀)}[y = x] *
+        h x.1 (answersOf x.2) ≤
+      ∑' c, ∑' a, Pr{let y ← sampleChallenges}[y = c] * Pr{let y ← runWithRandomPermutation (coinEs 5)}[y = a] *
+        h c a + εfs
 
 end PcsQuotient
 

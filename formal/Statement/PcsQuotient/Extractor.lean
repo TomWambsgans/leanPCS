@@ -36,17 +36,17 @@ polynomial in the committed size and the transcript's length, not in the proof's
    `Replay.leavesUnder`): the Merkle tree under the root inverted top down, a node's children the
    halves of its unique answered 64-byte preimage, a leaf the 64 words of its unique answered 512-byte
    preimage; zero leaves under an unanswered node. The witness table is committed at
-   `μ = m + 1 = 25` variables and rate `1/2`: `2^20` leaves of `64` words; each of its `64` lanes is
-   a Reed–Solomon word of `n = 2^20` symbols for messages of `k = 2^19` coefficients.
+   `μ = m = 24` variables and rate `1/2`: `2^19` leaves of `64` words; each of its `64` lanes is
+   a Reed–Solomon word of `n = 2^19` symbols for messages of `k = 2^18` coefficients.
 4. **The candidate stacks**, in three stages, each run only if the ones before give no witness:
-   * **the fast path** (mumbai's `fastStacks`): each lane interpolated from its first `2^19` columns,
+   * **the fast path** (mumbai's `fastStacks`): each lane interpolated from its first `2^18` columns,
      for a word without errors there;
    * **the unique decoder** (`UniqueDecoding.uniqueStacks`, `Decoder.lean`): each lane decoded by
-     Gao's decoder, which recovers its polynomial whenever the lane has at most `⌊(n − k)/2⌋ = 2^18`
+     Gao's decoder, which recovers its polynomial whenever the lane has at most `⌊(n − k)/2⌋ = 2^17`
      wrong columns, so the stack whenever the word agrees with the stack's encoding on at least
-     `(n + k)/2 = 786432` of its `2^20` columns;
+     `(n + k)/2 = 393216` of its `2^19` columns;
    * **the list decoder** (mumbai's `decodeStacks`): every stack whose encoding agrees with the word on
-     at least the Johnson threshold of columns (`741549` at this shape, `0.7072·n`), by CompPoly's
+     at least the Johnson threshold of columns (about `0.7072·n` at this shape), by CompPoly's
      Guruswami–Sudan list decoder over `K` lane by lane with prefix pruning (at most `2^18` candidates
      at every admissible shape, mumbai's `LeanVM.candidates_ncard_le`).
 5. **The secret** (`secretOfStack`): a candidate stack **is** the witness table (a PCS commitment commits
@@ -59,20 +59,20 @@ polynomial in the committed size and the transcript's length, not in the proof's
 **Cost** (read off the loops, not proved), in operations of `K` (an addition is an `xor`, a product a
 carry-less product reduced), hash-map operations (`O(1)` expected) and byte comparisons; `Q` the
 transcript's queries, `N` the evaluations read (the setup's `2^20 − 1`: `2^19` leaves and `2^19 − 1`
-nodes, and the transcript's), `n = 2^20` columns, `k = 2^19`:
+nodes, and the transcript's), `n = 2^19` columns, `k = 2^18`:
 
 | Step | Cost |
 | --- | --- |
 | replay, evaluations (`Replay.lean`) | `Q` steps of `O(1)` hash-map operations on `200`-byte states, at most `680` bytes copied each; at most two paddings of at most `544` bytes compared per chain |
-| index, inversion | `N` insertions keyed by inputs (at most `512` bytes) and `N` by digests; `2^20 − 1` node and `2^20` leaf lookups, `20·2^20` leaves copied |
-| fast path (`fastStacks`) | `64` inverse transforms of `2^19` and forward of `2^20`: about `2^31.4` |
+| index, inversion | `N` insertions keyed by inputs (at most `512` bytes) and `N` by digests; `2^19 − 1` node and `2^19` leaf lookups, `19·2^19` leaves copied |
+| fast path (`fastStacks`) | `64` inverse transforms of `2^18` and forward of `2^19`: about `2^30.4` |
 | unique decoder (`uniqueStacks`), when the fast path gives no witness | about `2^28.3` per lane plus `2^21.5` per wrong column of the lane: about `2^34.3` for a word with few errors, at most `2^45.7` |
 | list decoder (`decodeStacks`), when neither gives a witness | multiplicity `m' = 1149`, `Y`-degree `ℓ = 1625`, `n·m'(m'+1)/2 = 2^39.3` interpolation conditions per lane (Lee–O'Sullivan); Mulders–Storjohann's reduction of an `(ℓ+1)×(ℓ+1)` matrix of degree `m'·n`, `(ℓ+1)³(m'n)² ≈ 2^92.3` per lane (`2^98.3` for the `64`), then Roth–Ruckenstein's roots; infeasible, as mumbai says of its own |
 | per candidate | one transform of `2^24`, `33` Keccak-256 |
 
 **The list decoder is the worst case only.** It runs only when neither the fast path nor the unique
 decoder gives a witness, so (the unique decoder recovering every stack within its radius) only for a
-word whose every witness stack's encoding agrees with it on fewer than `786432` of its `2^20` columns:
+word whose every witness stack's encoding agrees with it on fewer than `393216` of its `2^19` columns:
 beyond the unique-decoding radius (more than `2^18` wrong columns), within the Johnson radius. An honest
 proof's word has no errors (the fast path); a word with a few wrong leaves takes the unique decoder.
 That the unique decoder recovers every word within its radius is Gao's theorem, tested
@@ -111,12 +111,12 @@ def merkleLengths : List ℕ := [64, 8 * 2 ^ laneFold]
 
 /-- **The committed word of the witness table**: under the root the proof names, the leaves the unique
 preimages `pre` (a digest and a length to the input) commit to (mumbai's `committedLeaves`,
-`Replay.leavesUnder`), `2^(μ−6+1)` leaves of `64` words for `μ = m + 1`; `none` if the proof names no
+`Replay.leavesUnder`), `2^(μ−6+1)` leaves of `64` words for `μ = m`; `none` if the proof names no
 root. -/
 def witnessWord (logRows : ℕ) (pre : Digest → ℕ → Option Bytes) (proof : Proof) :
     Option (ℕ → List K) :=
   (witnessRootOf proof).map fun root ↦
-    let height := cellVars logRows + 1 - laneFold + logInvRate
+    let height := cellVars logRows - laneFold + logInvRate
     leafAt (Replay.leavesUnder pre (2 ^ laneFold) height root) height (2 ^ laneFold)
 
 /-- **The extractor on given preimages**: the first candidate whose secret satisfies the relation, the
@@ -125,7 +125,7 @@ none of those does, the list decoder's (`decodeStacks`) only if none of those do
 def extractFrom (circuit : Circuit) (stmt : Statement) (pre : Digest → ℕ → Option Bytes)
     (proof : Proof) : Option Secret := do
   let word ← witnessWord circuit.logRows pre proof
-  let μ := cellVars circuit.logRows + 1
+  let μ := cellVars circuit.logRows
   let witnessOf (stack : Vector K (2 ^ μ)) : Option Secret :=
     let w := secretOfStack circuit stack
     if Relation stmt w then some w else none

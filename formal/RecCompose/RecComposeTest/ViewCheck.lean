@@ -1,23 +1,23 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import RecCompose.ViewDefs
-import RecCircuit.Sound
-import RecGraphKeccak.Emitted
+import RecCompose.RealDeployment
 
 /-!
 # The view check, evaluated
 
-`rec-view-check [ref|zero]`: runs `RecCircuit.compile (ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt
-iv)` (compiled code; the Keccak VM's π1-rec3 at 128 signatures) at π1's reference IV (`RecStatement.Data.pi1Iv`) and at
+`rec-view-check [ref|zero]`: runs `RecCircuit.compile (ofRG (emittedAt realRoots) RecGraphKeccak.Emitted.rootsAt iv
+Data.hashed)` (compiled code; the Keccak VM's π1-rec4 at 128 signatures, at the reference setup commitment) at π1's
+reference IV (`RecStatement.Data.pi1Iv`) and at
 the all-zero IV (both without an argument, one with `ref` or `zero`), and evaluates `RecCompose.viewCheck` on the
-circuit: its view (`viewOf`, `adapt` transcribed) is `Data.circuit`, its calls (`callsOf`) are `Data.pi1Calls`, and it is
-valid (`validB`), part by part.
+circuit: its view (`viewOf`, `adapt` transcribed) is `Data.circuit`, its calls (`callsOf`) are `Data.pi1Calls`, it is
+valid (`validB`), part by part, and it hashes π1's claims `Data.hashed`.
 -/
 
 open RecCompose
 
 def checkAt (label : String) (iv : List UInt8) : IO Bool := do
   let t0 ← IO.monoMsNow
-  match RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) with
+  match RecCircuit.compile (RecCircuit.ofRG (emittedAt realRoots) RecGraphKeccak.Emitted.rootsAt iv
+      RecStatement.Data.hashed) with
   | .error m => IO.println s!"{label}: the compiler rejects the graph: {m}"; return false
   | .ok c =>
     let t1 ← IO.monoMsNow
@@ -30,7 +30,8 @@ def checkAt (label : String) (iv : List UInt8) : IO Bool := do
       {decide (v.pairs = d.pairs)} ({v.pairs.length}/{d.pairs.length}), reads {decide (v.reads = d.reads)} \
       ({v.reads.length}/{d.reads.length}), public terms {decide (v.publicTerms = d.publicTerms)} \
       ({v.publicTerms.length}/{d.publicTerms.length})"
-    IO.println s!"{label}: calls {decide (callsOf C = RecStatement.Data.pi1Calls)}"
+    IO.println s!"{label}: calls {decide (callsOf C = RecStatement.Data.pi1Calls)}, hashed \
+      {decide (C.hashed = RecStatement.Data.hashed)}"
     let part (name : String) (b : Unit → Bool) : IO Unit := do
       let t ← IO.monoMsNow
       let v := b ()

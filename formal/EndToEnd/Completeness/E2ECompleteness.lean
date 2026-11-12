@@ -6,11 +6,12 @@ import E2ECompleteness.Transfer
 import E2ECompleteness.PcsDone
 
 /-!
-# `PcsQuotient.Completeness`, end to end, on the PCS claims
+# `PcsQuotient.Completeness`, end to end, for the deployed protocol
 
 The completeness statement of `formal/Statement` (`PcsQuotient.Completeness δ`: the setup, uniform coins, the
-honest `prover` (four commitments with out-of-domain answers, `H`, `Q`, `G`, sixteen random rows, the blinding of
-`h`, six one-point claims, one opening a claim) and the `verifier`, in one random permutation) with an explicit `δ`:
+honest `prover` (the witness table `W`, the quotient table `T` with `A₀, A₁, B₀, B₁`, sixteen random rows, the
+blinding of `h` with `b₂` solved, three one-point claims, one opening a claim) and the `verifier`, in one random
+permutation) with an explicit `δ`:
 
 * `PcsWithHash`, `PcsExperiment`, `PcsStaging`: the Statement's prover and verifier at functions `H`, `F`, and the
   experiment staged by the four challenges `(α, β, t, ρ)` (`completenessExperiment_eq_expH`, `expH_eq_staged`);
@@ -18,12 +19,17 @@ honest `prover` (four commitments with out-of-domain answers, `H`, `Q`, `G`, six
 * `Transfer`, `PcsDuplex`, `PcsCost`, `PcsHashLen`: the random permutation is two random oracles up to
   `N² / 2^508` (`rpm_le_rom`), the run following the duplex discipline (`duplexVm_stagedRun`) with at most `2^48`
   blocks (`hcost_deployed`);
-* `PcsBad`, `PcsGrinding`, `PcsEnd`: the degenerate challenges (`badP4_fraction_le`, `(19 · 2^24 + 31) / 2^192`),
-  the six openings' grinding (`rejectGood_of_tail`, `2^-304`), `completeness_of_staged4`, `deltaPcs_lt`;
-* `PcsHonest`, `PcsTable`, `PcsTables`, `PcsCoset`, `PcsCells`, `PcsQuotient`, `PcsQuotientTable`, `PcsCircuit`,
-  `PcsValues`, `PcsStatement`, `PcsClaims`: the honest parts are F1's blinded honest second message
-  (`quotientsOfTable_honest`) and the six claims are true (`honestClaims`); `PcsAccept`, `PcsOpening`: accepted;
-* `PcsDone`: **`completeness_end`**, `PcsQuotient.Completeness deltaPcs` with no hypothesis, `deltaPcs < 2^-163`.
+* `PcsGrinding`, `PcsAccept`, `PcsOpening`, `PcsEnd`: the three openings' grinding (`rejectGood_of_tail`,
+  `2^-304`) given the honest claims (`HonestClaims`), `completeness_of_staged4`;
+* the honest algebra: `PcsKc3` (F1's honest second message is consistent and accepted), `PcsKc3Claims` (accepted
+  tables satisfy the deployed claims), `PcsNovel`, `PcsNovelDiv` (the novel basis, `mulX`, `divX`, the division by
+  `w_m`), `PcsHBasis`, `PcsHInstance`, `PcsHCells` (the deployed instance, F0's `sat_honest`), `PcsHDefs`,
+  `PcsHCoset`, `PcsHArrays`, `PcsHParts`, `PcsHQuot` (the prover's arrays are F1's polynomials, `q = Q₀ + b₂ E` with
+  `(q /ₘ Z)(0) = 0`), `PcsHTable`, `PcsHSlots` (the quotient table holds the honest second message), `PcsHValues`
+  (`valuesAt`), `PcsHDeg`, `PcsHHonest` (**`H.honestClaims_badSet`**), `PcsHBad` (**`H.badSet_density`**,
+  `(7 · 2^24 + 3) / 2^192`, given the evaluated `H.WiringCheck`);
+* `PcsDone`: **`completeness_end`**, `PcsQuotient.Completeness deltaPcs` given `H.WiringCheck`,
+  `deltaPcs < 2^-163`.
 
 See the completeness section of `formal/README.md`.
 -/
@@ -56,13 +62,10 @@ See the completeness section of `formal/README.md`.
 #guard_msgs in
 #print axioms E2ECompleteness.Pcs.hcost_deployed
 
-/-- info: 'E2ECompleteness.Pcs.badP4_fraction_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.H.badSet_density' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.Pcs.badP4_fraction_le
+#print axioms E2ECompleteness.Pcs.H.badSet_density
 
-/-- info: 'E2ECompleteness.Pcs.badSet_density' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.Pcs.badSet_density
 
 /-- info: 'E2ECompleteness.Pcs.rejectGood_of_tail' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -84,17 +87,17 @@ See the completeness section of `formal/README.md`.
 #guard_msgs in
 #print axioms E2ECompleteness.Pcs.tailAccepts
 
-/-- info: 'E2ECompleteness.Pcs.quotientsOfTable_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.H.honest_claims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.Pcs.quotientsOfTable_honest
+#print axioms E2ECompleteness.Pcs.H.honest_claims
 
-/-- info: 'E2ECompleteness.Pcs.honestClaims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.H.honestClaims_badSet' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.Pcs.honestClaims
+#print axioms E2ECompleteness.Pcs.H.honestClaims_badSet
 
-/-- info: 'E2ECompleteness.Pcs.completeness_of_honestClaims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.completeness_of_wiringCheck' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.Pcs.completeness_of_honestClaims
+#print axioms E2ECompleteness.Pcs.completeness_of_wiringCheck
 
 /-- info: 'E2ECompleteness.completeness_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

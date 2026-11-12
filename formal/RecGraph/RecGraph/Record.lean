@@ -112,6 +112,10 @@ def sample (st : RecState) (narrow : Bool) : Nat × RecState :=
   let st := { st with state := h, absorbed := st.cursor }
   st.new (if narrow then .narrow h else .low h)
 
+/-- **A wide draw's challenge `k ≥ 1`** (`Recorder::sample_wide`'s `Wide(state, k)`): right after the draw's `sample`
+(its hash the state's node, challenge `0` its `low`), challenge `k` of the state's rate. -/
+def wide (st : RecState) (k : Nat) : Nat × RecState := st.new (.wide st.state k)
+
 /-- **`Recorder::statement`**: word `k` of the public input. -/
 def statement (st : RecState) (k : Nat) : Nat × RecState := st.new (.statement k)
 
@@ -123,6 +127,8 @@ inductive Op where
   | statement (k : Nat)
   | input (len : Nat)
   | sample (narrow : Bool)
+  /-- Challenge `k ≥ 1` of the wide draw just made (`sample false` is its hash and challenge `0`). -/
+  | wide (k : Nat)
   | add (a b : Nat)
   | mul (a b : Nat)
   | bits (v shift width : Nat)
@@ -134,6 +140,7 @@ def RecState.op (st : RecState) : Op → Nat × RecState
   | .statement k => st.statement k
   | .input len => st.input len
   | .sample narrow => st.sample narrow
+  | .wide k => st.wide k
   | .add a b => st.add a b
   | .mul a b => st.mul a b
   | .bits v s w => st.bits v s w

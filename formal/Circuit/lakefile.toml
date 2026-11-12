@@ -46,11 +46,5 @@ subDir = "Statement"
 name = "Circuit"
 globs = ["Circuit", "Circuit.+"]
 
-# The differential test against the Rust circuit (`CircuitTest/Dump.lean`): not part of the proofs.
-[[lean_lib]]
-name = "CircuitTest"
-globs = ["CircuitTest.+"]
-
-[[lean_exe]]
-name = "dump-circuit"
-root = "CircuitTest.Dump"
+# The previous protocol's circuit (gate `V = X + C + Y·C`), kept for the definitions the leanVM line imports; the
+# deployed circuit's dump test is `formal/Kc3Circuit`'s (`kc3-dump-circuit`).
