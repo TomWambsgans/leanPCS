@@ -173,6 +173,12 @@ TODO
 
 **Claims held in a signature entry need one more check.** With a frame `PCS_SIG_SCHEME || s`, a proof can commit to `compute_sig_hash(tx)` (`TXPARAM(0x08)`), provided nothing else that hash covers depends on the proof: the proof also travels in an `ARBITRARY` entry with an empty `msg`, and both entries have a length fixed before proving, since the hash covers their lengths and not their bytes. Anyone can then reorder the hashes in entry `s`, or replace them with the hashes of other true claims, and the hash does not change. If the contract checks entry `s` in a `VERIFY` frame, as [Reading PCS claims](#reading-pcs-claims) says, the altered transaction is invalid. Otherwise it stays valid, the call that uses the claims fails, and the payer still pays. A contract with no `VERIFY` frame in the transaction, for example one that a `SENDER` frame calls after the sender's signature approves the transaction, uses claims held in a frame's `data`, which that signature covers.
 
+**Absorb the whole commitment.** A root alone can match several polynomials, and `ood` picks out one of them. An application must hash both `root` and `ood` into its transcript before it draws any challenge that depends on the commitment. If it hashes only the root, a cheating prover can wait for the challenges and then choose which polynomial to open, which weakens soundness.
+
+**Migration can lock a contract to the migrator.** The migration check in [Upgrades](#upgrades) proves that `com'` holds the same polynomial as `com`, not that anyone else can open `com'`. A migrator can change one position of the encoding before committing and keep the result to themself. Their openings almost always pass, but anyone else who encodes the polynomial gets a different root and cannot open `com'`. A contract should therefore keep `com` and add `com'` next to it, or let only a trusted account migrate.
+
+**A version chosen by the prover is only as safe as the weakest version.** If a contract takes the version of a claim from the proof, as it can for commitments to a witness (see [Upgrades](#upgrades)), a prover picks whichever supported version suits them. Once a version is broken, every such contract stays exposed until the protocol stops supporting that version. A contract that fixes the version in its code avoids this, but cannot move to a newer one.
+
 TODO 
 
 ## Copyright
