@@ -175,6 +175,8 @@ TODO
 
 **Absorb the whole commitment.** A root alone can match several polynomials, and `ood` picks out one of them. An application must hash both `root` and `ood` into its transcript before it draws any challenge that depends on the commitment. If it hashes only the root, a cheating prover can wait for the challenges and then choose which polynomial to open, which weakens soundness.
 
+**Migration can lock a contract to the migrator.** The migration check in [Upgrades](#upgrades) proves that `com'` holds the same polynomial as `com`, not that anyone else can open `com'`. A migrator can change one position of the encoding before committing and keep the result to themself. Their openings almost always pass, but anyone else who encodes the polynomial gets a different root and cannot open `com'`. A contract should therefore keep `com` and add `com'` next to it, or let only a trusted account migrate.
+
 TODO 
 
 ## Copyright
