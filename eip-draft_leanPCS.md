@@ -177,6 +177,8 @@ TODO
 
 **Migration can lock a contract to the migrator.** The migration check in [Upgrades](#upgrades) shows that `com'` holds the same polynomial as `com`, but not that anyone else can open `com'`, since opening needs the exact data behind its root. A migrator can commit to altered data, for example the honest encoding with one position changed, and keep it to themself. Their own openings still pass unless a query hits that position, but nobody else can open `com'`. If the protocol later drops the old version, `com` can no longer be opened either, and the contract is locked to the migrator. To avoid this, a contract can let only a trusted account migrate, or accept more than one migrated commitment, so that anyone can add one they can open before the old version is dropped.
 
+**A version chosen by the prover is only as safe as the weakest version.** If a contract takes the version of a claim from the proof, as it can for commitments to a witness (see [Upgrades](#upgrades)), a prover picks whichever supported version suits them, including versions added after the contract was deployed. Once a version is broken, every such contract stays exposed until the protocol stops supporting that version. A contract that fixes the version in its code avoids this, but cannot move to a newer one, and stops working if the protocol drops its version. A contract can also keep a list of accepted versions that a trusted account updates.
+
 TODO 
 
 ## Copyright
