@@ -59,10 +59,13 @@ A PCS claim states that the multilinear polynomial $f$ over $K$ in `n` variables
 PCS_claim = version (1 byte) || n (1 byte) || commitment (56 bytes) || point_0 || ... || point_{n-1} (24 bytes each) || value (24 bytes)
 ```
 
-- **The commitment.** Under the hood, it's a Merkle root and an out of domain answer (in $E$).
+- **The polynomial.** $f(x) = \sum_i f_i \prod_j \ell_j(i, x)$, where $f_i \in K$ is the $i$-th of the $2^n$ committed values, and $\ell_j(i, x)$ is $x_j$ if bit $j$ of $i$ is 1 and $1 - x_j$ otherwise (bit 0 is the least significant).
+- **The commitment.** `commitment = root (32 bytes) || ood (24 bytes)`. `root` is the Merkle root of the PCS version's encoding of $f$. `ood` is the out-of-domain answer $f(z)$, where $z_j$ is the element encoded by the last 24 bytes of `keccak256("leanPCS-ood" || version || n || root || j)` (`version`, `n` and `j` are one byte each).
 - **Well-formedness.** A PCS claim is well-formed if `version` is supported, `1 <= n <= MAX_PCS_VARIABLES`, and it is `82 + 24 * n` bytes long.
 
-Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. We start at version `1`: ZK-WHIR at rate 1/2 with in the list-decoding regime.
+Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. It MUST return false if `PCS_claim` is not well-formed, and MUST check, in one opening, both $f(z)$ = `ood` and $f$(`point`) = `value`. The first check is what ties a commitment to one polynomial: in the list-decoding regime, a root alone fits a list of polynomials, and the answer at $z$, a point drawn from the root, singles one out.
+
+We start at version `1`: ZK-WHIR at rate 1/2 in the list-decoding regime. Version `1` is not fully specified here yet. For now, its parameters, transcript and proof encoding are those of the reference implementation (`crates/pcs_claim` in this repository, at commit `bb2da7f0`), which supports `15 <= n <= 28`, returns false for any other `n`, and is not zero knowledge yet.
 
 ### Dependencies
 
@@ -76,11 +79,11 @@ This EIP replaces the dependency format of EIP-8288, its `(scheme, data_hash, ve
 EIP-8288 applies, with these changes:
 
 - **Frames.** A dependency verification frame is valid only if its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `scheme` one of the two above and `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`. It declares the dependencies `scheme || payload_j`.
-- **`dependencies(tx)`** is the sorted, deduplicated list of the dependencies the transaction's frames declare, a `msg_hash` of 32 zero bytes standing for `compute_sig_hash(tx)`.
+- **`dependencies(tx)`** is the list of the dependencies the transaction's frames declare, each `msg_hash` of 32 zero bytes replaced by `compute_sig_hash(tx)`, then deduplicated and sorted. Every list of dependencies (of a transaction, a block or a wrapper) is sorted byte by byte (lexicographic order).
 - **`get_deps_hash(deps)`** is `keccak256(concat(deps))`, in place of `DEPS_HASH`.
 - **The recursive STARK** proves a PCS dependency from a `PCS_claim` hashing to its payload and an `opening_proof` with `pcs_verify(PCS_claim, opening_proof)`. A false or ill-formed claim cannot be proven, so its transaction cannot be included.
-- **Limits.** A transaction declaring more than `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, is invalid. PCS dependencies travel only in mode 1 wrappers.
-- **Gas.** leanSPHINCS dependencies are priced as in EIP-8288. A frame of PCS dependencies has `limits.execution = 0` and adds nothing to `recursive_stark_gas(tx)`. Instead, a transaction declaring `c > 0` PCS dependencies, adds `pcs_gas(tx) = PCS_TX_GAS + PCS_CLAIM_GAS * c` to both `frame_tx_intrinsic_gas` and `calldata_floor_gas` (EIP-8141).
+- **Limits.** A transaction declaring more than `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, duplicates included, is invalid. PCS dependencies travel only in mode 1 wrappers.
+- **Gas.** leanSPHINCS dependencies are priced as in EIP-8288. A frame of PCS dependencies has `limits.execution = 0` and adds nothing to `recursive_stark_gas(tx)`. Instead, a transaction declaring `c > 0` PCS dependencies, duplicates included, adds `pcs_gas(tx) = PCS_TX_GAS + PCS_CLAIM_GAS * c` to both `frame_tx_intrinsic_gas` and `calldata_floor_gas` (EIP-8141).
 
 ### Reading PCS claims
 
@@ -89,6 +92,10 @@ A valid block proves every declared dependency, so a contract may rely on `PCS_c
 1. `FRAMEPARAM(i, 0x02)` (the mode) is `DEP_VERIFY_FRAME_MODE`;
 2. the first byte of `FRAMEDATALOAD(0, i)` is `PCS_SCHEME`;
 3. `FRAMEDATALOAD(1 + 32 * j, i)` is `keccak256(PCS_claim)`.
+
+Arguments are written from the top of the stack, as EIP-8141 defines them: `FRAMEPARAM(frameIndex, param)` and `FRAMEDATALOAD(offset, frameIndex)`.
+
+In a transaction eligible for EIP-8141's public mempool, dependency verification frames come after the validation prefix, since no recognized validation prefix contains one. Validation code can still read them: `FRAMEPARAM` and `FRAMEDATALOAD` also read later frames.
 
 ## Rationale
 
@@ -152,6 +159,8 @@ def mulfield(a, b):  # multiplication in E
 TODO
 
 ## Security Considerations
+
+**A proof is not tied to its transaction.** A declared claim only says that the claim is true. Anyone who sees a pending transaction can copy its proof, its frame of PCS claims and the STARK that proves them into another transaction, with other frames. So when a proof authorizes something (a payment, a call), what it authorizes has to be part of the application's own transcript, from the start. With the claims in a frame's `data`, the proof cannot commit to `compute_sig_hash(tx)`, as a signature does: that hash covers the frame's `data`, and the claims depend on the transcript. The contract has to hash the relevant parts of the transaction itself, for example the chain id, the sender, the nonce, the fees and the frames it authorizes.
 
 TODO 
 
