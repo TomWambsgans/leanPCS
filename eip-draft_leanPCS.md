@@ -12,7 +12,7 @@ requires: 8141, 8288
 
 ## Abstract
 
-This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](./eip-8288.md) dependencies of [EIP-8141](./eip-8141.md) frame transactions. Contracts read the declared claims through frame and signature introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify STARKs (post-quantum, hash-based SNARKs) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
+This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](./eip-8288.md) dependencies of [EIP-8141](./eip-8141.md) frame transactions. Contracts read the declared claims through frame and signature introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{128})$. Together, they let users cheaply verify STARKs (post-quantum, hash-based SNARKs) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
 
 ## Motivation
 
@@ -25,7 +25,6 @@ The goal of this EIP is to get most of the benefits (cheap onchain STARK verific
 
 ## WARNING (TODO delete this)
 
-- The field GF(2^192) will soon be replaced by GF(2^128). TLDR: it will further improve performance, with the same security.
 - I am not a frame expert
 - Gas pricing is not finalized
 
@@ -46,27 +45,27 @@ The other constants, dependency verification frames, the recursive STARK and mem
 
 ### Fields
 
-Let $K = \mathrm{GF}(2)[Y] / (Y^{64} + Y^4 + Y^3 + Y + 1)$ and $E = K[X] / (X^3 + X + 1)$. An element of $K$ is encoded as a 64-bit integer whose bit $j$ is the coefficient of $Y^j$. An element $a + bX + cX^2$ of $E$, with $a, b, c \in K$, is encoded as the word `a | (b << 64) | (c << 128)`, and in bytes as that word's low 24 bytes, big-endian.
+Let $K = \mathrm{GF}(2)[Y] / (Y^{64} + Y^4 + Y^3 + Y + 1)$ and $E = K[X] / (X^2 + YX + 1)$, a field of $2^{128}$ elements ($X^2 + YX + 1$ is irreducible over $K$). This is leanVM's field; leanVM writes $x$ for $Y$ and $y$ for $X$. An element of $K$ is encoded as a 64-bit integer whose bit $j$ is the coefficient of $Y^j$. An element $a + bX$ of $E$, with $a, b \in K$, is encoded as the word `a | (b << 64)`, and in bytes as that word's low 16 bytes, big-endian.
 
 ### `MULFIELD`
 
-The instruction `MULFIELD` (`0x1f`) pops `a` (the top of the stack) and then `b`, ignores their top 64 bits, and pushes their product in $E$ (the product is commutative, so the order does not matter). It costs 10 gas.
+The instruction `MULFIELD` (`0x1f`) pops `a` (the top of the stack) and then `b`, ignores their top 128 bits, and pushes their product in $E$ (the product is commutative, so the order does not matter). It costs 10 gas.
 
 ### PCS claims
 
 A PCS claim states that the multilinear polynomial $f$ over $K$ in `n` variables committed to as `commitment` takes the value `value` (in $E$) at `point` (in $E^n$), under PCS version `version`:
 
 ```
-PCS_claim = version (1 byte) || n (1 byte) || commitment (56 bytes) || point_0 || ... || point_{n-1} (24 bytes each) || value (24 bytes)
+PCS_claim = version (1 byte) || n (1 byte) || commitment (64 bytes) || point_0 || ... || point_{n-1} (16 bytes each) || value (16 bytes)
 ```
 
 - **The polynomial.** $f(x) = \sum_i f_i \prod_j \ell_j(i, x)$, where $f_i \in K$ is the $i$-th of the $2^n$ committed values, and $\ell_j(i, x)$ is $x_j$ if bit $j$ of $i$ is 1 and $1 - x_j$ otherwise (bit 0 is the least significant).
-- **The commitment.** `commitment = root (32 bytes) || ood (24 bytes)`. `root` is the Merkle root of the PCS version's encoding of $f$. `ood` is the out-of-domain answer $f(z)$, where $z_j$ is the element encoded by the last 24 bytes of `keccak256("leanPCS-ood" || version || n || root || j)` (`version`, `n` and `j` are one byte each).
-- **Well-formedness.** A PCS claim is well-formed if `version` is supported, `1 <= n <= MAX_PCS_VARIABLES`, and it is `82 + 24 * n` bytes long.
+- **The commitment.** `commitment = root (32 bytes) || ood (32 bytes)`. `root` is the Merkle root of the PCS version's encoding of $f$. `ood = ood_0 || ood_1` holds two out-of-domain answers, $f(z^{(0)})$ and $f(z^{(1)})$, 16 bytes each, where $z^{(k)}_j$ is the element encoded by the last 16 bytes of `keccak256("leanPCS-ood" || version || n || root || k || j)` (`version`, `n`, `k` and `j` are one byte each).
+- **Well-formedness.** A PCS claim is well-formed if `version` is supported, `1 <= n <= MAX_PCS_VARIABLES`, and it is `82 + 16 * n` bytes long.
 
-Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. It MUST return false if `PCS_claim` is not well-formed, and MUST check, in one opening, both $f(z)$ = `ood` and $f$(`point`) = `value`. The first check is what ties a commitment to one polynomial: in the list-decoding regime, a root alone fits a list of polynomials, and the answer at $z$, a point drawn from the root, singles one out.
+Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. It MUST return false if `PCS_claim` is not well-formed, and MUST check, in one opening, $f(z^{(0)})$ = `ood_0`, $f(z^{(1)})$ = `ood_1` and $f$(`point`) = `value`. The first two checks are what tie a commitment to one polynomial: in the list-decoding regime, a root alone fits a list of polynomials, and the answers at $z^{(0)}$ and $z^{(1)}$, two points drawn from the root, single one out.
 
-We start at version `1`: ZK-WHIR at rate 1/2 in the list-decoding regime. Version `1` is not fully specified here yet. For now, its parameters, transcript and proof encoding are those of the reference implementation (`crates/pcs_claim` in this repository, at commit `bb2da7f0`), which supports `15 <= n <= 28`, returns false for any other `n`, and is not zero knowledge yet.
+We start at version `1`: the zero-knowledge variant (ZK-WHIR) of leanVM's WHIR over $E$, at rate 1/2 in the list-decoding regime. Version `1` is not specified here yet, including which `n` it supports; its verifier returns false for any `n` it does not support. The prototype in this repository (`crates/pcs_claim`, at commit `bb2da7f0`) has not moved to $E$ yet: it works over $\mathrm{GF}(2^{192})$ with one out-of-domain answer, supports `15 <= n <= 28`, and is not zero knowledge yet.
 
 ### Dependencies
 
@@ -106,7 +105,7 @@ In a transaction eligible for EIP-8141's public mempool, dependency verification
 
 ### Benchmarks
 
-Gas follows EIP-8141 with [EIP-7976](./eip-7976.md)'s calldata floor, without the per-transaction and per-frame overheads: *PIOP* is the PIOP's frame, *Total* adds the frame of PCS claims and `pcs_gas`. *Prover* adds 0.1 s per claim for aggregating, client side, every PCS opening, into a common STARK.
+Gas follows EIP-8141 with [EIP-7976](./eip-7976.md)'s calldata floor, without the per-transaction and per-frame overheads: *PIOP* is the PIOP's frame, *Total* adds the frame of PCS claims and `pcs_gas`. *Prover* adds 0.1 s per claim for aggregating, client side, every PCS opening, into a common STARK. These figures come from the prototype, over $\mathrm{GF}(2^{192})$, and have not been measured again over $E$.
 
 | Application | Prover (Apple M4 Max) | Calldata | PIOP | PCS claims | Total |
 |---|---|---|---|---|---|
@@ -125,11 +124,17 @@ The sender aggregates the openings of its transaction client side, into one STAR
 
 A proof that authorizes its transaction should commit to `compute_sig_hash(tx)`, as a signature does. It cannot while that hash covers its claims, which depend on the proof. EIP-8141 leaves the `signature` bytes of an entry with an empty `msg` out of that hash, keeps their length, and tells custom schemes to put their witness in such an entry. A frame `PCS_SIG_SCHEME || s` gives claims the same place, with no new hash and no change to EIP-8141.
 
+### Why a 128-bit field, with two out-of-domain answers
+
+Contracts hard-code the field through `MULFIELD` and the claim layout, so this choice is final. $E$ is the field leanVM uses: compared with $\mathrm{GF}(2^{192})$, a multiplication takes about half the work and a field element takes 16 bytes of calldata instead of 24. Version `1` builds on leanVM's WHIR, which targets 125 bits of security over $E$. A field of this size is enough because it folds with a random polynomial of degree one instead of a single random field element (Chiesa, Weissenberg, Yogev and Zheng, ePrint 2026/2863), and adds proof of work before its challenges.
+
+A commitment carries two out-of-domain answers because one is not enough in a field of this size. A root alone fits a list of up to $L$ polynomials. With one answer, some two of them give the same answer with probability at most $\binom{L}{2} n / 2^{128}$ per root, about $2^{-111}$ for $n = 32$ and $L = 100$, and a prover can try many roots offline. leanVM adds proof of work before it draws its out-of-domain point. Here the points are hashed from the root with no proof of work, and a second answer at an independent point lowers the bound instead: $\binom{L}{2} (n / 2^{128})^2$ per root, below $2^{-200}$ for any $L$ up to a million, for 16 more bytes per commitment. The migration check in [Upgrades](#upgrades) uses two points for the same reason: with one, a wrong `com'` passes with probability up to $n / 2^{128}$ per attempt, and attempts can be made offline.
+
 ### Upgrades
 
 The field cannot change, but the PCS can: a future fork can add a version $v + 1$ that brings the latest performance improvements of PCSs. PCS opnings used to commit to witness can adapted without redeploying legacy smart contracts relying on leanPCS.Commitments stored in contracts, typically circuit verification keys, can be migrated, following this idea of JD:
 
-To migrate a stored commitment `com` (version $v$) to `com'` (version $v + 1$, same `n`), a contract derives a point $r$ from both by Fiat-Shamir and requires its transaction to declare that both take the same value at $r$. Distinct polynomials pass with probability at most $n / 2^{192}$ (Schwartz–Zippel).
+To migrate a stored commitment `com` (version $v$) to `com'` (version $v + 1$, same `n`), a contract derives two independent points $r^{(0)}, r^{(1)}$ from both commitments by Fiat-Shamir and requires its transaction to declare that `com` and `com'` take the same value at each point. Distinct polynomials pass with probability at most $(n / 2^{128})^2$ per attempt (Schwartz–Zippel).
 
 ## Backwards Compatibility
 
@@ -151,16 +156,14 @@ def mul_k(a, b):  # multiplication in K
     return r
 
 def mulfield(a, b):  # multiplication in E
-    x = [(a >> (64 * i)) & (2**64 - 1) for i in range(3)]
-    y = [(b >> (64 * i)) & (2**64 - 1) for i in range(3)]
-    c = [0] * 5
-    for i in range(3):
-        for j in range(3):
-            c[i + j] ^= mul_k(x[i], y[j])
-    for d in (4, 3):  # X^d = X^(d-2) + X^(d-3)
-        c[d - 2] ^= c[d]
-        c[d - 3] ^= c[d]
-    return c[0] | (c[1] << 64) | (c[2] << 128)
+    m = 2**64 - 1
+    a0, a1, b0, b1 = a & m, (a >> 64) & m, b & m, (b >> 64) & m
+    t = mul_k(a1, b1)  # X^2 = YX + 1
+    c0 = mul_k(a0, b0) ^ t
+    c1 = mul_k(a0, b1) ^ mul_k(a1, b0) ^ mul_k(t, 2)
+    return c0 | (c1 << 64)
+
+assert mulfield(1 << 64, 1 << 64) == (2 << 64) | 1  # X^2 = YX + 1
 ```
 
 ### PCS claims
@@ -176,6 +179,8 @@ TODO
 **Absorb the whole commitment.** A root alone can match several polynomials, and `ood` picks out one of them. When a commitment comes from the proof rather than from the contract, the application must hash both `root` and `ood` into its transcript before it draws any challenge that depends on the commitment, and use that `ood` in every claim on that commitment. If it hashes only the root, the prover chooses `ood` after seeing the challenges, and the application's soundness error is multiplied by up to the number of polynomials the root matches.
 
 **Migration can lock a contract to the migrator.** The migration check in [Upgrades](#upgrades) shows that `com'` holds the same polynomial as `com`, but not that anyone else can open `com'`, since opening needs the exact data behind its root. A migrator can commit to altered data, for example the honest encoding with one position changed, and keep it to themself. Their own openings still pass unless a query hits that position, but nobody else can open `com'`. If the protocol later drops the old version, `com` can no longer be opened either, and the contract is locked to the migrator. To avoid this, a contract can let only a trusted account migrate, or accept more than one migrated commitment, so that anyone can add one they can open before the old version is dropped.
+
+**Challenges in $E$ give at most 128 bits.** An application draws its challenges from $E$, so a false polynomial identity of degree $d$ still holds at a random challenge with probability up to $d / 2^{128}$ per attempt, which is $2^{-106}$ for $d = 2^{22}$. A random element of $E$ also lies in the subfield $K$ with probability $2^{-64}$, so a check that a prover can pass whenever the challenge lies in $K$ gives at most 64 bits of security. An application that needs more can repeat the check at independent challenges, which multiplies the error probabilities, or add proof of work.
 
 TODO 
 
