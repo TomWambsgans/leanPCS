@@ -121,9 +121,27 @@ EIP-8288's triples, a statement's hash and a verification key's hash, are made f
 
 The sender aggregates the openings of its transaction client side, into one STARK that it broadcasts in a mode 1 wrapper. The mempool then recursively aggregates only one STARK, whatever the number of PCS claims. `PCS_TX_GAS` pays for this per-transaction work: verifying and aggregating one more STARK. `PCS_CLAIM_GAS` pays for each claim's share: a dependency of the block.
 
-### Why PCS claims can be held in a signature entry
+### How a proof signs its transaction
 
-A proof that authorizes its transaction should commit to `compute_sig_hash(tx)`, as a signature does. It cannot while that hash covers its claims, which depend on the proof. EIP-8141 leaves the `signature` bytes of an entry with an empty `msg` out of that hash, keeps their length, and tells custom schemes to put their witness in such an entry. A frame `PCS_SIG_SCHEME || s` gives claims the same place, with no new hash and no change to EIP-8141.
+An account can be protected by a proof instead of a signature. Such a proof must attest to `compute_sig_hash(tx)`, like a signature.
+
+But this hash covers the `data` of every frame, and the PIOP proof and the PCS claims are computed from the hash. Conclusion: the PIOP proof and the PCS claims cannot be in frame data (circular dependency).
+
+Solution: put the PIOP bytes and the PCS claims where signatures go. In EIP-8141, the hash does not cover the `signature` bytes of an entry with an empty `msg` (it covers only their length). So the PIOP proof goes in one `ARBITRARY` entry, and the hashes of the PCS claims go in another, entry `s`. A frame `PCS_SIG_SCHEME || s` declares the hashes in entry `s` as PCS dependencies.
+
+The sender:
+
+1. writes the transaction and fixes the lengths of the two entries;
+2. computes `compute_sig_hash(tx)`;
+3. builds the proof, which attests to this hash;
+4. fills the two entries (PIOP proof / hashes of the PCS claims), which does not change the hash;
+5. opens the PCS claims and broadcasts the transaction.
+
+Anyone can change the bytes of the two entries without changing the hash. So, in a `VERIFY` frame, the contract:
+
+- checks that the PIOP proof is valid, with `TXPARAM(0x08)` (sighash) in its transcript (`SIGDATACOPY` followed by EVM execution);
+- checks that entry `s` holds exactly the hashes of the PIOP proof's claims (see [Reading PCS claims](#reading-pcs-claims));
+- checks that the transaction has a dependency frame of the form `PCS_SIG_SCHEME || s`, so that the block proves each PCS claim.
 
 ### Upgrades
 
